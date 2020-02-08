@@ -7,8 +7,8 @@
 // specific language governing permissions and limitations relating to use of the SAFE Network
 // Software.
 
-mod append_only_data;
 mod coins;
+mod sequence;
 mod unpublished_mutable_data;
 
 use crate::ffi::test_utils::test_create_app_with_access;
@@ -30,9 +30,8 @@ use safe_core::utils::test_utils::random_client;
 use safe_core::ConnectionManager;
 use safe_core::{Client, CoreError};
 use safe_nd::{
-    ADataAddress, ADataOwner, AppPermissions, AppendOnlyData, Coins, Error as SndError,
-    PubImmutableData, PubSeqAppendOnlyData, PubUnseqAppendOnlyData, UnpubUnseqAppendOnlyData,
-    XorName,
+    Address, AppPermissions, Coins, Error as SndError, Owner, PrivateSequence, PubImmutableData,
+    PublicSequence, XorName,
 };
 #[cfg(feature = "mock-network")]
 use safe_nd::{RequestType, Response};
@@ -267,28 +266,28 @@ fn unregistered_client() {
     let addr: XorName = rand::random();
     let tag = 15002;
     let pub_idata = PubImmutableData::new(unwrap!(utils::generate_random_vector(30)));
-    let pub_adata = PubUnseqAppendOnlyData::new(addr, tag);
-    let mut unpub_adata = UnpubUnseqAppendOnlyData::new(addr, tag);
+    let public_sequence = PublicSequence::new(addr, tag);
+    let mut private_sequence = PrivateSequence::new(addr, tag);
 
     // Registered Client PUTs something onto the network.
     {
         let pub_idata = pub_idata.clone();
-        let mut pub_adata = pub_adata.clone();
+        let mut public_sequence = public_sequence.clone();
 
         random_client(|client| {
-            let owner = ADataOwner {
+            let owner = Owner {
                 public_key: client.owner_key(),
-                entries_index: 0,
-                permissions_index: 0,
+                expected_data_version: 0,
+                expected_access_list_version: 0,
             };
-            unwrap!(pub_adata.append_owner(owner, 0));
-            unwrap!(unpub_adata.append_owner(owner, 0));
+            unwrap!(public_sequence.set_owner(owner, 0));
+            unwrap!(private_sequence.set_owner(owner, 0));
             let client2 = client.clone();
             let client3 = client.clone();
             client
                 .put_idata(pub_idata)
-                .and_then(move |_| client2.put_adata(pub_adata.into()))
-                .and_then(move |_| client3.put_adata(unpub_adata.into()))
+                .and_then(move |_| client2.put_sequence(public_sequence.into()))
+                .and_then(move |_| client3.put_sequence(private_sequence.into()))
         });
     }
 
@@ -303,15 +302,15 @@ fn unregistered_client() {
             .and_then(move |data| {
                 assert_eq!(data, pub_idata.into());
                 client2
-                    .get_adata(ADataAddress::PubUnseq { name: addr, tag })
+                    .get_sequence(Address::Public { name: addr, tag })
                     .map(move |data| {
-                        assert_eq!(data.address(), pub_adata.address());
-                        assert_eq!(data.tag(), pub_adata.tag());
+                        assert_eq!(data.address(), public_sequence.address());
+                        assert_eq!(data.tag(), public_sequence.tag());
                     })
             })
             .then(move |_| {
                 client3
-                    .get_adata(ADataAddress::UnpubUnseq { name: addr, tag })
+                    .get_sequence(Address::Private { name: addr, tag })
                     .then(|res| {
                         match res {
                             Err(CoreError::DataError(SndError::AccessDenied)) => (),
@@ -348,8 +347,8 @@ fn published_data_access() {
     let name: XorName = rand::random();
     let tag = 15002;
     let pub_idata = PubImmutableData::new(unwrap!(utils::generate_random_vector(30)));
-    let mut pub_unseq_adata = PubUnseqAppendOnlyData::new(name, tag);
-    let mut pub_seq_adata = PubSeqAppendOnlyData::new(name, tag);
+    let mut pub_unseq_adata = PublicSequence::new(name, tag);
+    let mut pub_seq_adata = PublicSequence::new(name, tag);
 
     // Create a random client and store some data
     {
@@ -359,23 +358,23 @@ fn published_data_access() {
             let client2 = client.clone();
             let client3 = client.clone();
 
-            let owner = ADataOwner {
+            let owner = Owner {
                 public_key: client.owner_key(),
-                entries_index: 0,
-                permissions_index: 0,
+                expected_data_version: 0,
+                expected_access_list_version: 0,
             };
-            unwrap!(pub_seq_adata.append_owner(owner, 0));
-            unwrap!(pub_unseq_adata.append_owner(owner, 0));
+            unwrap!(pub_seq_adata.set_owner(owner, 0));
+            unwrap!(pub_unseq_adata.set_owner(owner, 0));
 
             client
                 .put_idata(pub_idata)
-                .and_then(move |_| client2.put_adata(pub_seq_adata.into()))
-                .and_then(move |_| client3.put_adata(pub_unseq_adata.into()))
+                .and_then(move |_| client2.put_sequence(pub_seq_adata.into()))
+                .and_then(move |_| client3.put_sequence(pub_unseq_adata.into()))
         });
     }
 
-    let pub_seq_adata_addr = ADataAddress::PubSeq { name, tag };
-    let pub_unseq_adata_addr = ADataAddress::UnpubSeq { name, tag };
+    let pub_seq_adata_addr = Address::Public { name, tag };
+    let pub_unseq_adata_addr = Address::Private { name, tag };
 
     // Unregistered apps should be able to read the data
     {
@@ -392,7 +391,7 @@ fn published_data_access() {
                 .and_then(move |data| {
                     assert_eq!(data, pub_idata.into());
                     client2
-                        .get_adata(pub_unseq_adata_addr)
+                        .get_sequence(pub_unseq_adata_addr)
                         .map_err(AppError::from)
                         .map(move |data| {
                             assert_eq!(*data.address(), pub_unseq_adata_addr);
@@ -400,7 +399,7 @@ fn published_data_access() {
                 })
                 .then(move |_| {
                     client3
-                        .get_adata(pub_seq_adata_addr)
+                        .get_sequence(pub_seq_adata_addr)
                         .map_err(AppError::from)
                         .map(move |data| {
                             assert_eq!(*data.address(), pub_seq_adata_addr);
@@ -421,7 +420,7 @@ fn published_data_access() {
             .and_then(move |data| {
                 assert_eq!(data, pub_idata.into());
                 client2
-                    .get_adata(pub_unseq_adata_addr)
+                    .get_sequence(pub_unseq_adata_addr)
                     .map_err(AppError::from)
                     .map(move |data| {
                         assert_eq!(*data.address(), pub_unseq_adata_addr);
@@ -429,7 +428,7 @@ fn published_data_access() {
             })
             .then(move |_| {
                 client3
-                    .get_adata(pub_seq_adata_addr)
+                    .get_sequence(pub_seq_adata_addr)
                     .map_err(AppError::from)
                     .map(move |data| {
                         assert_eq!(*data.address(), pub_seq_adata_addr);

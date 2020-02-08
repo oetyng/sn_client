@@ -44,13 +44,13 @@ use lazy_static::lazy_static;
 use log::trace;
 use lru_cache::LruCache;
 use safe_nd::{
-    AData, ADataAddress, ADataAppendOperation, ADataEntries, ADataEntry, ADataIndex, ADataIndices,
-    ADataOwner, ADataPermissions, ADataPubPermissionSet, ADataPubPermissions,
-    ADataUnpubPermissionSet, ADataUnpubPermissions, ADataUser, AppPermissions, ClientFullId, Coins,
+    AccessList, Address, AppPermissions, AppendOperation, ClientFullId, Coins, ExpectedVersions,
     IData, IDataAddress, LoginPacket, MData, MDataAddress, MDataEntries, MDataEntryActions,
     MDataPermissionSet, MDataSeqEntries, MDataSeqEntryActions, MDataSeqValue,
-    MDataUnseqEntryActions, MDataValue, MDataValues, Message, MessageId, PublicId, PublicKey,
-    Request, RequestType, Response, SeqMutableData, Transaction, UnseqMutableData, XorName,
+    MDataUnseqEntryActions, MDataValue, MDataValues, Message, MessageId, Owner, PrivateAccessList,
+    PrivateUserAccess, PublicAccessList, PublicId, PublicKey, PublicUserAccess, Request,
+    RequestType, Response, SeqMutableData, Sequence, SequenceEntry, Transaction, UnseqMutableData,
+    User, Value, Values, Version, XorName,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -664,319 +664,6 @@ pub trait Client: Clone + 'static {
         })
         .into_box()
     }
-    // ======= Append Only Data =======
-    //
-    /// Put AppendOnly Data into the Network
-    fn put_adata(&self, data: AData) -> Box<CoreFuture<()>> {
-        trace!("Put AppendOnly Data {:?}", data.name());
-        send_mutation(self, Request::PutAData(data))
-    }
-
-    /// Get AppendOnly Data from the Network
-    fn get_adata(&self, address: ADataAddress) -> Box<CoreFuture<AData>> {
-        trace!("Get AppendOnly Data at {:?}", address.name());
-
-        send(self, Request::GetAData(address))
-            .and_then(|res| match res {
-                Response::GetAData(res) => res.map_err(CoreError::from),
-                _ => Err(CoreError::ReceivedUnexpectedEvent),
-            })
-            .into_box()
-    }
-
-    /// Get AppendOnly Data Shell from the Network
-    fn get_adata_shell(
-        &self,
-        data_index: ADataIndex,
-        address: ADataAddress,
-    ) -> Box<CoreFuture<AData>> {
-        trace!("Get AppendOnly Data at {:?}", address.name());
-
-        send(
-            self,
-            Request::GetADataShell {
-                address,
-                data_index,
-            },
-        )
-        .and_then(|res| match res {
-            Response::GetADataShell(res) => res.map_err(CoreError::from),
-            _ => Err(CoreError::ReceivedUnexpectedEvent),
-        })
-        .into_box()
-    }
-
-    /// Fetch Value for the provided key from AppendOnly Data at {:?}
-    fn get_adata_value(&self, address: ADataAddress, key: Vec<u8>) -> Box<CoreFuture<Vec<u8>>> {
-        trace!(
-            "Fetch Value for the provided key from AppendOnly Data at {:?}",
-            address.name()
-        );
-
-        send(self, Request::GetADataValue { address, key })
-            .and_then(|res| match res {
-                Response::GetADataValue(res) => res.map_err(CoreError::from),
-                _ => Err(CoreError::ReceivedUnexpectedEvent),
-            })
-            .into_box()
-    }
-
-    /// Get a Set of Entries for the requested range from an AData.
-    fn get_adata_range(
-        &self,
-        address: ADataAddress,
-        range: (ADataIndex, ADataIndex),
-    ) -> Box<CoreFuture<ADataEntries>> {
-        trace!(
-            "Get Range of entries from AppendOnly Data at {:?}",
-            address.name()
-        );
-
-        send(self, Request::GetADataRange { address, range })
-            .and_then(|res| match res {
-                Response::GetADataRange(res) => res.map_err(CoreError::from),
-                _ => Err(CoreError::ReceivedUnexpectedEvent),
-            })
-            .into_box()
-    }
-
-    /// Get latest indices from an AppendOnly Data.
-    fn get_adata_indices(&self, address: ADataAddress) -> Box<CoreFuture<ADataIndices>> {
-        trace!(
-            "Get latest indices from AppendOnly Data at {:?}",
-            address.name()
-        );
-
-        send(self, Request::GetADataIndices(address))
-            .and_then(|res| match res {
-                Response::GetADataIndices(res) => res.map_err(CoreError::from),
-                _ => Err(CoreError::ReceivedUnexpectedEvent),
-            })
-            .into_box()
-    }
-
-    /// Get the last data entry from an AppendOnly Data.
-    fn get_adata_last_entry(&self, address: ADataAddress) -> Box<CoreFuture<ADataEntry>> {
-        trace!(
-            "Get latest indices from AppendOnly Data at {:?}",
-            address.name()
-        );
-
-        send(self, Request::GetADataLastEntry(address))
-            .and_then(|res| match res {
-                Response::GetADataLastEntry(res) => res.map_err(CoreError::from),
-                _ => Err(CoreError::ReceivedUnexpectedEvent),
-            })
-            .into_box()
-    }
-
-    /// Get permissions at the provided index.
-    fn get_unpub_adata_permissions_at_index(
-        &self,
-        address: ADataAddress,
-        permissions_index: ADataIndex,
-    ) -> Box<CoreFuture<ADataUnpubPermissions>> {
-        trace!(
-            "Get latest indices from AppendOnly Data at {:?}",
-            address.name()
-        );
-
-        send(
-            self,
-            Request::GetADataPermissions {
-                address,
-                permissions_index,
-            },
-        )
-        .and_then(|res| match res {
-            Response::GetADataPermissions(res) => {
-                res.map_err(CoreError::from)
-                    .and_then(|permissions| match permissions {
-                        ADataPermissions::Unpub(data) => Ok(data),
-                        ADataPermissions::Pub(_) => Err(CoreError::ReceivedUnexpectedData),
-                    })
-            }
-            _ => Err(CoreError::ReceivedUnexpectedEvent),
-        })
-        .into_box()
-    }
-
-    /// Get permissions at the provided index.
-    fn get_pub_adata_permissions_at_index(
-        &self,
-        address: ADataAddress,
-        permissions_index: ADataIndex,
-    ) -> Box<CoreFuture<ADataPubPermissions>> {
-        trace!(
-            "Get latest indices from AppendOnly Data at {:?}",
-            address.name()
-        );
-
-        send(
-            self,
-            Request::GetADataPermissions {
-                address,
-                permissions_index,
-            },
-        )
-        .and_then(|res| match res {
-            Response::GetADataPermissions(res) => {
-                res.map_err(CoreError::from)
-                    .and_then(|permissions| match permissions {
-                        ADataPermissions::Pub(data) => Ok(data),
-                        ADataPermissions::Unpub(_) => Err(CoreError::ReceivedUnexpectedData),
-                    })
-            }
-            _ => Err(CoreError::ReceivedUnexpectedEvent),
-        })
-        .into_box()
-    }
-
-    /// Get permissions for a specified user(s).
-    fn get_pub_adata_user_permissions(
-        &self,
-        address: ADataAddress,
-        permissions_index: ADataIndex,
-        user: ADataUser,
-    ) -> Box<CoreFuture<ADataPubPermissionSet>> {
-        trace!(
-            "Get permissions for a specified user(s) from AppendOnly Data at {:?}",
-            address.name()
-        );
-
-        send(
-            self,
-            Request::GetPubADataUserPermissions {
-                address,
-                permissions_index,
-                user,
-            },
-        )
-        .and_then(|res| match res {
-            Response::GetPubADataUserPermissions(res) => res.map_err(CoreError::from),
-            _ => Err(CoreError::ReceivedUnexpectedEvent),
-        })
-        .into_box()
-    }
-
-    /// Get permissions for a specified user(s).
-    fn get_unpub_adata_user_permissions(
-        &self,
-        address: ADataAddress,
-        permissions_index: ADataIndex,
-        public_key: PublicKey,
-    ) -> Box<CoreFuture<ADataUnpubPermissionSet>> {
-        trace!(
-            "Get permissions for a specified user(s) from AppendOnly Data at {:?}",
-            address.name()
-        );
-
-        send(
-            self,
-            Request::GetUnpubADataUserPermissions {
-                address,
-                permissions_index,
-                public_key,
-            },
-        )
-        .and_then(|res| match res {
-            Response::GetUnpubADataUserPermissions(res) => res.map_err(CoreError::from),
-            _ => Err(CoreError::ReceivedUnexpectedEvent),
-        })
-        .into_box()
-    }
-
-    /// Add AData Permissions
-    fn add_unpub_adata_permissions(
-        &self,
-        address: ADataAddress,
-        permissions: ADataUnpubPermissions,
-        permissions_index: u64,
-    ) -> Box<CoreFuture<()>> {
-        trace!(
-            "Add Permissions to UnPub AppendOnly Data {:?}",
-            address.name()
-        );
-
-        send_mutation(
-            self,
-            Request::AddUnpubADataPermissions {
-                address,
-                permissions,
-                permissions_index,
-            },
-        )
-    }
-
-    /// Add Pub AData Permissions
-    fn add_pub_adata_permissions(
-        &self,
-        address: ADataAddress,
-        permissions: ADataPubPermissions,
-        permissions_index: u64,
-    ) -> Box<CoreFuture<()>> {
-        trace!("Add Permissions to AppendOnly Data {:?}", address.name());
-
-        send_mutation(
-            self,
-            Request::AddPubADataPermissions {
-                address,
-                permissions,
-                permissions_index,
-            },
-        )
-    }
-
-    /// Set new Owners to AData
-    fn set_adata_owners(
-        &self,
-        address: ADataAddress,
-        owner: ADataOwner,
-        owners_index: u64,
-    ) -> Box<CoreFuture<()>> {
-        trace!("Set Owners to AppendOnly Data {:?}", address.name());
-
-        send_mutation(
-            self,
-            Request::SetADataOwner {
-                address,
-                owner,
-                owners_index,
-            },
-        )
-    }
-
-    /// Set new Owners to AData
-    fn get_adata_owners(
-        &self,
-        address: ADataAddress,
-        owners_index: ADataIndex,
-    ) -> Box<CoreFuture<ADataOwner>> {
-        trace!("Get Owners from AppendOnly Data at {:?}", address.name());
-
-        send(
-            self,
-            Request::GetADataOwners {
-                address,
-                owners_index,
-            },
-        )
-        .and_then(|res| match res {
-            Response::GetADataOwners(res) => res.map_err(CoreError::from),
-            _ => Err(CoreError::ReceivedUnexpectedEvent),
-        })
-        .into_box()
-    }
-
-    /// Append to Published Seq AppendOnly Data
-    fn append_seq_adata(&self, append: ADataAppendOperation, index: u64) -> Box<CoreFuture<()>> {
-        send_mutation(self, Request::AppendSeq { append, index })
-    }
-
-    /// Append to Unpublished Unseq AppendOnly Data
-    fn append_unseq_adata(&self, append: ADataAppendOperation) -> Box<CoreFuture<()>> {
-        send_mutation(self, Request::AppendUnseq(append))
-    }
 
     /// Return a list of permissions in `MutableData` stored on the network.
     fn list_mdata_permissions(
@@ -1043,6 +730,275 @@ pub trait Client: Clone + 'static {
         version: u64,
     ) -> Box<CoreFuture<()>> {
         unimplemented!();
+    }
+
+    // ======= Sequence =======
+    //
+    /// Put Sequence into the Network
+    fn put_sequence(&self, data: Sequence) -> Box<CoreFuture<()>> {
+        trace!("Put Sequence {:?}", data.name());
+        send_mutation(self, Request::PutSequence(data))
+    }
+
+    /// Get Sequence from the Network
+    fn get_sequence(&self, address: Address) -> Box<CoreFuture<Sequence>> {
+        trace!("Get Sequence at {:?}", address.name());
+
+        send(self, Request::GetSequence(address))
+            .and_then(|res| match res {
+                Response::GetSequence(res) => res.map_err(CoreError::from),
+                _ => Err(CoreError::ReceivedUnexpectedEvent),
+            })
+            .into_box()
+    }
+
+    /// Get Sequence Shell from the Network
+    fn get_sequence_shell(
+        &self,
+        data_version: Option<Version>,
+        address: Address,
+    ) -> Box<CoreFuture<Sequence>> {
+        trace!("Get Sequence at {:?}", address.name());
+
+        send(
+            self,
+            Request::GetSequenceShell {
+                address,
+                data_version,
+            },
+        )
+        .and_then(|res| match res {
+            Response::GetSequenceShell(res) => res.map_err(CoreError::from),
+            _ => Err(CoreError::ReceivedUnexpectedEvent),
+        })
+        .into_box()
+    }
+
+    /// Fetch Value for the provided version from Sequence at {:?}
+    fn get_sequence_value(&self, address: Address, version: Version) -> Box<CoreFuture<Value>> {
+        trace!(
+            "Fetch Value for the provided key from Sequence at {:?}",
+            address.name()
+        );
+
+        send(self, Request::GetSequenceValue { address, version })
+            .and_then(|res| match res {
+                Response::GetSequenceValue(res) => res.map_err(CoreError::from),
+                _ => Err(CoreError::ReceivedUnexpectedEvent),
+            })
+            .into_box()
+    }
+
+    /// Get a Set of Entries for the requested range from an AData.
+    fn get_sequence_range(
+        &self,
+        address: Address,
+        range: (Version, Version),
+    ) -> Box<CoreFuture<Values>> {
+        trace!("Get Range of entries from Sequence at {:?}", address.name());
+
+        send(self, Request::GetSequenceRange { address, range })
+            .and_then(|res| match res {
+                Response::GetSequenceRange(res) => res.map_err(CoreError::from),
+                _ => Err(CoreError::ReceivedUnexpectedEvent),
+            })
+            .into_box()
+    }
+
+    /// Get expected versions from an Sequence.
+    fn get_sequence_indices(&self, address: Address) -> Box<CoreFuture<ExpectedVersions>> {
+        trace!("Get expected versions of Sequence at {:?}", address.name());
+
+        send(self, Request::GetSequenceExpectedVersions(address))
+            .and_then(|res| match res {
+                Response::GetSequenceExpectedVersions(res) => res.map_err(CoreError::from),
+                _ => Err(CoreError::ReceivedUnexpectedEvent),
+            })
+            .into_box()
+    }
+
+    /// Get the current data entry from a Sequence.
+    fn get_sequence_current_entry(&self, address: Address) -> Box<CoreFuture<SequenceEntry>> {
+        trace!("Get current entry from Sequence at {:?}", address.name());
+
+        send(self, Request::GetSequenceCurrentEntry(address))
+            .and_then(|res| match res {
+                Response::GetSequenceCurrentEntry(res) => res.map_err(CoreError::from),
+                _ => Err(CoreError::ReceivedUnexpectedEvent),
+            })
+            .into_box()
+    }
+
+    /// Get access list at the provided version.
+    fn get_private_sequence_access_list_at_index(
+        &self,
+        address: Address,
+        version: Version,
+    ) -> Box<CoreFuture<PrivateAccessList>> {
+        trace!("Get latest indices from Sequence at {:?}", address.name());
+
+        send(self, Request::GetSequenceAccessListAt { address, version })
+            .and_then(|res| match res {
+                Response::GetSequenceAccessListAt(res) => {
+                    res.map_err(CoreError::from)
+                        .and_then(|permissions| match permissions {
+                            AccessList::Private(data) => Ok(data),
+                            AccessList::Public(_) => Err(CoreError::ReceivedUnexpectedData),
+                        })
+                }
+                _ => Err(CoreError::ReceivedUnexpectedEvent),
+            })
+            .into_box()
+    }
+
+    /// Get access list at the provided version.
+    fn get_public_sequence_access_list_at_index(
+        &self,
+        address: Address,
+        version: Version,
+    ) -> Box<CoreFuture<PublicAccessList>> {
+        trace!("Get latest indices from Sequence at {:?}", address.name());
+
+        send(self, Request::GetSequenceAccessListAt { address, version })
+            .and_then(|res| match res {
+                Response::GetSequenceAccessListAt(res) => {
+                    res.map_err(CoreError::from)
+                        .and_then(|permissions| match permissions {
+                            AccessList::Public(data) => Ok(data),
+                            AccessList::Private(_) => Err(CoreError::ReceivedUnexpectedData),
+                        })
+                }
+                _ => Err(CoreError::ReceivedUnexpectedEvent),
+            })
+            .into_box()
+    }
+
+    /// Get permissions for the specified user(s).
+    fn get_public_sequence_user_permissions(
+        &self,
+        address: Address,
+        version: Version,
+        user: User,
+    ) -> Box<CoreFuture<PublicUserAccess>> {
+        trace!(
+            "Get permissions for the specified user(s) from Sequence at {:?}",
+            address.name()
+        );
+
+        send(
+            self,
+            Request::GetPublicSequenceUserPermissionsAt {
+                address,
+                version,
+                user,
+            },
+        )
+        .and_then(|res| match res {
+            Response::GetPublicSequenceUserPermissionsAt(res) => res.map_err(CoreError::from),
+            _ => Err(CoreError::ReceivedUnexpectedEvent),
+        })
+        .into_box()
+    }
+
+    /// Get permissions for the specified user(s).
+    fn get_private_sequence_user_permissions(
+        &self,
+        address: Address,
+        version: Version,
+        public_key: PublicKey,
+    ) -> Box<CoreFuture<PrivateUserAccess>> {
+        trace!(
+            "Get permissions for the specified user(s) from Sequence at {:?}",
+            address.name()
+        );
+
+        send(
+            self,
+            Request::GetPrivateSequenceUserPermissionsAt {
+                address,
+                version,
+                public_key,
+            },
+        )
+        .and_then(|res| match res {
+            Response::GetPrivateSequenceUserPermissionsAt(res) => res.map_err(CoreError::from),
+            _ => Err(CoreError::ReceivedUnexpectedEvent),
+        })
+        .into_box()
+    }
+
+    /// Set Sequence access list
+    fn set_private_sequence_access_list(
+        &self,
+        address: Address,
+        access_list: PrivateAccessList,
+        expected_version: u64,
+    ) -> Box<CoreFuture<()>> {
+        trace!("Set Private Sequence access list {:?}", address.name());
+
+        send_mutation(
+            self,
+            Request::SetPrivateSequenceAccessList {
+                address,
+                access_list,
+                expected_version,
+            },
+        )
+    }
+
+    /// Set Public Sequence access list
+    fn set_public_sequence_access_list(
+        &self,
+        address: Address,
+        access_list: PublicAccessList,
+        expected_version: u64,
+    ) -> Box<CoreFuture<()>> {
+        trace!("Set Sequence access list {:?}", address.name());
+
+        send_mutation(
+            self,
+            Request::SetPublicSequenceAccessList {
+                address,
+                access_list,
+                expected_version,
+            },
+        )
+    }
+
+    /// Set new Owner of Sequence
+    fn set_sequence_owner(
+        &self,
+        address: Address,
+        owner: Owner,
+        expected_version: u64,
+    ) -> Box<CoreFuture<()>> {
+        trace!("Set Owner of Sequence {:?}", address.name());
+
+        send_mutation(
+            self,
+            Request::SetSequenceOwner {
+                address,
+                owner,
+                expected_version,
+            },
+        )
+    }
+
+    /// Get Sequence Owner
+    fn get_sequence_owner(&self, address: Address, version: Version) -> Box<CoreFuture<Owner>> {
+        trace!("Get Owner from Sequence at {:?}", address.name());
+
+        send(self, Request::GetSequenceOwnerAt { address, version })
+            .and_then(|res| match res {
+                Response::GetSequenceOwnerAt(res) => res.map_err(CoreError::from),
+                _ => Err(CoreError::ReceivedUnexpectedEvent),
+            })
+            .into_box()
+    }
+
+    /// Append to Public Sequence
+    fn append(&self, append: AppendOperation) -> Box<CoreFuture<()>> {
+        send_mutation(self, Request::Append(append))
     }
 
     #[cfg(any(
@@ -1281,11 +1237,11 @@ pub trait AuthActions: Client + Clone + 'static {
         send_mutation(self, Request::DeleteMData(address))
     }
 
-    /// Delete AData from network.
-    fn delete_adata(&self, address: ADataAddress) -> Box<CoreFuture<()>> {
-        trace!("Delete entire Unpublished AppendOnly Data at {:?}", address);
+    /// Delete Sequence instance from network.
+    fn delete_private_sequence(&self, address: Address) -> Box<CoreFuture<()>> {
+        trace!("Delete Private Sequence instance at {:?}", address);
 
-        send_mutation(self, Request::DeleteAData(address))
+        send_mutation(self, Request::DeletePrivateSequence(address))
     }
 }
 
@@ -1370,10 +1326,9 @@ mod tests {
         calculate_new_balance, gen_bls_keypair, gen_client_id, random_client,
     };
     use safe_nd::{
-        ADataAction, ADataEntry, ADataKind, ADataOwner, ADataUnpubPermissionSet,
-        ADataUnpubPermissions, AppendOnlyData, Coins, Error as SndError, MDataAction, MDataKind,
-        PubImmutableData, PubSeqAppendOnlyData, SeqAppendOnly, UnpubImmutableData,
-        UnpubSeqAppendOnlyData, UnpubUnseqAppendOnlyData, UnseqAppendOnly, XorName,
+        AccessType, Coins, Error as SndError, MDataAction, MDataKind, Owner, PrivateAccessList,
+        PrivateSequence, PrivateUserAccess, PubImmutableData, PublicSequence, Scope, Sequence,
+        UnpubImmutableData, XorName,
     };
     use std::str::FromStr;
 
@@ -2327,53 +2282,57 @@ mod tests {
 
             let name = XorName(rand::random());
             let tag = 15000;
-            let mut data = UnpubSeqAppendOnlyData::new(name, tag);
-            let mut perms = BTreeMap::<PublicKey, ADataUnpubPermissionSet>::new();
-            let set = ADataUnpubPermissionSet::new(true, true, true);
-            let index = ADataIndex::FromStart(0);
-            let _ = perms.insert(client.public_key(), set);
-            let address = ADataAddress::UnpubSeq { name, tag };
+            let mut data = PrivateSequence::new(name, tag);
+            let mut perms = BTreeMap::<PublicKey, PrivateUserAccess>::new();
+            let mut permissions = BTreeSet::new();
+            let _ = permissions.insert(AccessType::Read);
+            let _ = permissions.insert(AccessType::Append);
+            let _ = permissions.insert(AccessType::ModifyPermissions);
+            let user_access = PrivateUserAccess::new(permissions);
+            //let data_version = Version::FromStart(0);
+            let _ = perms.insert(client.public_key(), user_access);
+            let address = Address::Private { name, tag };
 
-            unwrap!(data.append_permissions(
-                ADataUnpubPermissions {
-                    permissions: perms,
-                    entries_index: 0,
-                    owners_index: 0,
+            unwrap!(data.set_access_list(
+                PrivateAccessList {
+                    access_list: perms,
+                    expected_data_version: 0,
+                    expected_owners_version: 0,
                 },
                 0
             ));
 
-            let owner = ADataOwner {
+            let owner = Owner {
                 public_key: client.public_key(),
-                entries_index: 0,
-                permissions_index: 1,
+                expected_data_version: 0,
+                expected_access_list_version: 1,
             };
-            unwrap!(data.append_owner(owner, 0));
+            unwrap!(data.set_owner(owner, 0));
 
             client
-                .put_adata(AData::UnpubSeq(data))
+                .put_sequence(Sequence::Private(data))
                 .and_then(move |_| {
-                    client1.get_adata(address).map(move |data| match data {
-                        AData::UnpubSeq(adata) => assert_eq!(*adata.name(), name),
+                    client1.get_sequence(address).map(move |data| match data {
+                        Sequence::Private(adata) => assert_eq!(*adata.name(), name),
                         _ => panic!("Unexpected data found"),
                     })
                 })
                 .and_then(move |_| {
                     client2
-                        .get_adata_shell(index, address)
+                        .get_sequence_shell(None, address)
                         .map(move |data| match data {
-                            AData::UnpubSeq(adata) => {
+                            Sequence::Private(adata) => {
                                 assert_eq!(*adata.name(), name);
                                 assert_eq!(adata.tag(), tag);
-                                assert_eq!(adata.permissions_index(), 1);
-                                assert_eq!(adata.owners_index(), 1);
+                                assert_eq!(adata.expected_access_list_version(), 1);
+                                assert_eq!(adata.expected_owners_version(), 1);
                             }
                             _ => panic!("Unexpected data found"),
                         })
                 })
-                .and_then(move |_| client3.delete_adata(address))
+                .and_then(move |_| client3.delete_private_sequence(address))
                 .and_then(move |_| {
-                    client4.get_adata(address).then(|res| match res {
+                    client4.get_sequence(address).then(|res| match res {
                         Ok(_) => panic!("AData was not deleted"),
                         Err(CoreError::DataError(SndError::NoSuchData)) => Ok(()),
                         Err(e) => panic!("Unexpected error: {:?}", e),
@@ -2397,12 +2356,16 @@ mod tests {
 
             let name = XorName(rand::random());
             let tag = 15000;
-            let adataref = ADataAddress::UnpubSeq { name, tag };
-            let mut data = UnpubSeqAppendOnlyData::new(name, tag);
-            let mut perms = BTreeMap::<PublicKey, ADataUnpubPermissionSet>::new();
-            let set = ADataUnpubPermissionSet::new(true, true, true);
+            let adataref = Address::Private { name, tag };
+            let mut data = PrivateSequence::new(name, tag);
+            let mut perms = BTreeMap::<PublicKey, PrivateUserAccess>::new();
+            let mut permissions = BTreeSet::new();
+            let _ = permissions.insert(AccessType::Read);
+            let _ = permissions.insert(AccessType::Append);
+            let _ = permissions.insert(AccessType::ModifyPermissions);
+            let user_access = PrivateUserAccess::new(permissions);
 
-            let _ = perms.insert(client.public_key(), set);
+            let _ = perms.insert(client.public_key(), user_access);
 
             let key1 = b"KEY1".to_vec();
             let key2 = b"KEY2".to_vec();
@@ -2414,69 +2377,69 @@ mod tests {
             let val3 = b"VALUE3".to_vec();
             let val4 = b"VALUE4".to_vec();
 
-            let kvdata = vec![
-                ADataEntry::new(key1, val1),
-                ADataEntry::new(key2, val2),
-                ADataEntry::new(key3, val3),
-            ];
+            let kvdata = vec![key1, val1, key2, val2, key3, val3];
 
-            unwrap!(data.append(kvdata, 0));
+            unwrap!(data.append(kvdata, Some(0)));
             // Test push
-            unwrap!(data.append(vec![ADataEntry::new(key4, val4)], 3));
+            unwrap!(data.append(vec![key4, val4], Some(3)));
 
-            unwrap!(data.append_permissions(
-                ADataUnpubPermissions {
-                    permissions: perms,
-                    entries_index: 4,
-                    owners_index: 0,
+            unwrap!(data.set_access_list(
+                PrivateAccessList {
+                    access_list: perms,
+                    expected_data_version: 4,
+                    expected_owners_version: 0,
                 },
                 0
             ));
 
-            let index_start = ADataIndex::FromStart(0);
-            let index_end = ADataIndex::FromEnd(2);
-            let perm_index = ADataIndex::FromStart(1);
+            let index_start = Version::FromStart(0);
+            let index_end = Version::FromEnd(2);
+            let perm_index = Version::FromStart(1);
 
             let sim_client = gen_bls_keypair().public_key();
             let sim_client1 = sim_client;
 
-            let mut perms2 = BTreeMap::<PublicKey, ADataUnpubPermissionSet>::new();
-            let set2 = ADataUnpubPermissionSet::new(true, true, false);
+            let mut perms2 = BTreeMap::<PublicKey, PrivateUserAccess>::new();
+            let mut permissions_2 = BTreeSet::new();
+            let _ = permissions_2.insert(AccessType::Read);
+            let _ = permissions_2.insert(AccessType::Append);
+            let _ = permissions_2.insert(AccessType::ModifyPermissions);
+            let user_access_2 = PrivateUserAccess::new(permissions_2);
 
-            let _ = perms2.insert(sim_client, set2);
+            let _ = perms2.insert(sim_client, user_access_2);
 
-            let perm_set = ADataUnpubPermissions {
-                permissions: perms2,
-                entries_index: 4,
-                owners_index: 1,
+            let perm_set = PrivateAccessList {
+                access_list: perms2,
+                expected_data_version: 4,
+                expected_owners_version: 1,
             };
 
-            let owner = ADataOwner {
+            let owner = Owner {
                 public_key: client.public_key(),
-                entries_index: 4,
-                permissions_index: 1,
+                expected_data_version: 4,
+                expected_access_list_version: 1,
             };
 
-            unwrap!(data.append_owner(owner, 0));
+            unwrap!(data.set_owner(owner, 0));
 
-            let mut test_data = UnpubSeqAppendOnlyData::new(XorName(rand::random()), 15000);
-            let test_owner = ADataOwner {
+            let mut test_data = PrivateSequence::new(XorName(rand::random()), 15000);
+            let test_owner = Owner {
                 public_key: gen_bls_keypair().public_key(),
-                entries_index: 0,
-                permissions_index: 0,
+                expected_data_version: 0,
+                expected_access_list_version: 0,
             };
 
-            unwrap!(test_data.append_owner(test_owner, 0));
+            unwrap!(test_data.set_owner(test_owner, 0));
 
             client
-                .put_adata(AData::UnpubSeq(data))
+                .put_sequence(Sequence::Private(data))
                 .then(move |res| {
                     assert!(res.is_ok());
                     Ok(())
                 })
                 .and_then(move |_| {
                     client1
-                        .put_adata(AData::UnpubSeq(test_data.clone()))
+                        .put_sequence(Sequence::Private(test_data.clone()))
                         .then(|res| match res {
                             Ok(_) => panic!("Unexpected Success: Validating owners should fail"),
                             Err(CoreError::DataError(SndError::InvalidOwners)) => Ok(()),
@@ -2485,44 +2448,47 @@ mod tests {
                 })
                 .and_then(move |_| {
                     client2
-                        .get_adata_range(adataref, (index_start, index_end))
+                        .get_sequence_range(adataref, (index_start, index_end))
                         .map(move |data| {
                             assert_eq!(
-                                unwrap!(std::str::from_utf8(&unwrap!(data.last()).key)),
+                                unwrap!(std::str::from_utf8(&unwrap!(data.last()))), // todo: fix
                                 "KEY2"
                             );
                             assert_eq!(
-                                unwrap!(std::str::from_utf8(&unwrap!(data.last()).value)),
+                                unwrap!(std::str::from_utf8(&unwrap!(data.last()))), // todo: fix
                                 "VALUE2"
                             );
                         })
                 })
                 .and_then(move |_| {
-                    client3.get_adata_indices(adataref).map(move |data| {
-                        assert_eq!(data.entries_index(), 4);
-                        assert_eq!(data.owners_index(), 1);
-                        assert_eq!(data.permissions_index(), 1);
+                    client3.get_sequence_indices(adataref).map(move |data| {
+                        assert_eq!(data.data_version, 4);
+                        assert_eq!(data.owners_version, 1);
+                        assert_eq!(data.access_list_version, 1);
                     })
                 })
                 .and_then(move |_| {
                     client4
-                        .get_adata_value(adataref, b"KEY1".to_vec())
+                        .get_sequence_value(adataref, Version::FromStart(0))
                         .map(move |data| {
                             assert_eq!(unwrap!(std::str::from_utf8(data.as_slice())), "VALUE1");
+                            // todo: fix
                         })
                 })
                 .and_then(move |_| {
-                    client5.get_adata_last_entry(adataref).map(move |data| {
-                        assert_eq!(unwrap!(std::str::from_utf8(data.key.as_slice())), "KEY4");
-                        assert_eq!(
-                            unwrap!(std::str::from_utf8(data.value.as_slice())),
-                            "VALUE4"
-                        );
-                    })
+                    client5
+                        .get_sequence_current_entry(adataref)
+                        .map(move |data| {
+                            assert_eq!(unwrap!(std::str::from_utf8(data.value.as_slice())), "KEY4"); // todo: fix
+                            assert_eq!(
+                                unwrap!(std::str::from_utf8(data.value.as_slice())),
+                                "VALUE4"
+                            );
+                        })
                 })
                 .and_then(move |_| {
                     client6
-                        .add_unpub_adata_permissions(adataref, perm_set, 1)
+                        .set_private_sequence_access_list(adataref, perm_set, 1)
                         .then(move |res| {
                             assert!(res.is_ok());
                             Ok(())
@@ -2530,21 +2496,21 @@ mod tests {
                 })
                 .and_then(move |_| {
                     client7
-                        .get_unpub_adata_permissions_at_index(adataref, perm_index)
+                        .get_private_sequence_access_list_at_index(adataref, perm_index)
                         .map(move |data| {
-                            let set = unwrap!(data.permissions.get(&sim_client1));
-                            assert!(set.is_allowed(ADataAction::Append));
+                            let set = unwrap!(data.access_list.get(&sim_client1));
+                            assert!(set.is_allowed(AccessType::Append));
                         })
                 })
                 .and_then(move |_| {
                     client8
-                        .get_unpub_adata_user_permissions(
+                        .get_private_sequence_user_permissions(
                             adataref,
                             index_start,
                             client8.public_key(),
                         )
                         .map(move |set| {
-                            assert!(set.is_allowed(ADataAction::Append));
+                            assert!(set.is_allowed(AccessType::Append));
                         })
                 })
                 .then(|res| res)
@@ -2552,27 +2518,30 @@ mod tests {
     }
 
     #[test]
-    pub fn append_seq_adata_test() {
+    pub fn append_test() {
         let name = XorName(rand::random());
         let tag = 10;
         random_client(move |client| {
             let client1 = client.clone();
             let client2 = client.clone();
 
-            let adataref = ADataAddress::PubSeq { name, tag };
-            let mut data = PubSeqAppendOnlyData::new(name, tag);
+            let adataref = Address::Public { name, tag };
+            let mut data = PublicSequence::new(name, tag);
 
-            let mut perms = BTreeMap::<ADataUser, ADataPubPermissionSet>::new();
-            let set = ADataPubPermissionSet::new(true, true);
+            let mut perms = BTreeMap::<User, PublicUserAccess>::new();
+            let mut permissions = BTreeMap::new();
+            let _ = permissions.insert(AccessType::Append, true);
+            let _ = permissions.insert(AccessType::ModifyPermissions, true);
+            let user_access = PublicUserAccess::new(permissions);
 
-            let usr = ADataUser::Key(client.public_key());
-            let _ = perms.insert(usr, set);
+            let user = User::Specific(client.public_key());
+            let _ = perms.insert(user, user_access);
 
-            unwrap!(data.append_permissions(
-                ADataPubPermissions {
-                    permissions: perms,
-                    entries_index: 0,
-                    owners_index: 0,
+            unwrap!(data.set_access_list(
+                PublicAccessList {
+                    access_list: perms,
+                    expected_data_version: 0,
+                    expected_owners_version: 0,
                 },
                 0
             ));
@@ -2582,33 +2551,32 @@ mod tests {
             let key2 = b"KEY2".to_vec();
             let val2 = b"VALUE2".to_vec();
 
-            let tup = vec![ADataEntry::new(key1, val1), ADataEntry::new(key2, val2)];
+            let values = vec![key1, val1, key2, val2];
 
-            let append = ADataAppendOperation {
-                address: adataref,
-                values: tup,
-            };
+            let append = AppendOperation::new(adataref, values, None); // Some(ExpectedVersion)
 
-            let owner = ADataOwner {
+            let owner = Owner {
                 public_key: client.public_key(),
-                entries_index: 0,
-                permissions_index: 1,
+                expected_data_version: 0,
+                expected_access_list_version: 1,
             };
 
-            unwrap!(data.append_owner(owner, 0));
+            unwrap!(data.set_owner(owner, 0));
 
             client
-                .put_adata(AData::PubSeq(data))
+                .put_sequence(Sequence::Public(data))
                 .and_then(move |_| {
-                    client1.append_seq_adata(append, 0).then(move |res| {
+                    client1.append(append).then(move |res| {
                         assert!(res.is_ok());
                         Ok(())
                     })
                 })
                 .and_then(move |_| {
-                    client2.get_adata(adataref).map(move |data| match data {
-                        AData::PubSeq(adata) => assert_eq!(
-                            unwrap!(std::str::from_utf8(&unwrap!(adata.last_entry()).key)),
+                    client2.get_sequence(adataref).map(move |data| match data {
+                        Sequence::Public(adata) => assert_eq!(
+                            unwrap!(std::str::from_utf8(
+                                &unwrap!(adata.current_data_entry()).value
+                            )), // todo: fix
                             "KEY2"
                         ),
                         _ => panic!("UNEXPECTED DATA!"),
@@ -2619,26 +2587,30 @@ mod tests {
     }
 
     #[test]
-    pub fn append_unseq_adata_test() {
+    pub fn append_test_0() {
         let name = XorName(rand::random());
         let tag = 10;
         random_client(move |client| {
             let client1 = client.clone();
             let client2 = client.clone();
 
-            let adataref = ADataAddress::UnpubUnseq { name, tag };
-            let mut data = UnpubUnseqAppendOnlyData::new(name, tag);
+            let adataref = Address::Private { name, tag };
+            let mut data = PrivateSequence::new(name, tag);
 
-            let mut perms = BTreeMap::<PublicKey, ADataUnpubPermissionSet>::new();
-            let set = ADataUnpubPermissionSet::new(true, true, true);
+            let mut perms = BTreeMap::<PublicKey, PrivateUserAccess>::new();
+            let mut permissions = BTreeSet::new();
+            let _ = permissions.insert(AccessType::Read);
+            let _ = permissions.insert(AccessType::Append);
+            let _ = permissions.insert(AccessType::ModifyPermissions);
+            let user_access = PrivateUserAccess::new(permissions);
 
-            let _ = perms.insert(client.public_key(), set);
+            let _ = perms.insert(client.public_key(), user_access);
 
-            unwrap!(data.append_permissions(
-                ADataUnpubPermissions {
-                    permissions: perms,
-                    entries_index: 0,
-                    owners_index: 0,
+            unwrap!(data.set_access_list(
+                PrivateAccessList {
+                    access_list: perms,
+                    expected_data_version: 0,
+                    expected_owners_version: 0,
                 },
                 0
             ));
@@ -2648,33 +2620,32 @@ mod tests {
             let key2 = b"KEY2".to_vec();
             let val2 = b"VALUE2".to_vec();
 
-            let tup = vec![ADataEntry::new(key1, val1), ADataEntry::new(key2, val2)];
+            let values = vec![key1, val1, key2, val2];
 
-            let append = ADataAppendOperation {
-                address: adataref,
-                values: tup,
-            };
+            let append = AppendOperation::new(adataref, values, None); // Some(ExpectedVersion)
 
-            let owner = ADataOwner {
+            let owner = Owner {
                 public_key: client.public_key(),
-                entries_index: 0,
-                permissions_index: 1,
+                expected_data_version: 0,
+                expected_access_list_version: 1,
             };
 
-            unwrap!(data.append_owner(owner, 0));
+            unwrap!(data.set_owner(owner, 0));
 
             client
-                .put_adata(AData::UnpubUnseq(data))
+                .put_sequence(Sequence::Private(data))
                 .and_then(move |_| {
-                    client1.append_unseq_adata(append).then(move |res| {
+                    client1.append(append).then(move |res| {
                         assert!(res.is_ok());
                         Ok(())
                     })
                 })
                 .and_then(move |_| {
-                    client2.get_adata(adataref).map(move |data| match data {
-                        AData::UnpubUnseq(adata) => assert_eq!(
-                            unwrap!(std::str::from_utf8(&unwrap!(adata.last_entry()).key)),
+                    client2.get_sequence(adataref).map(move |data| match data {
+                        Sequence::Private(adata) => assert_eq!(
+                            unwrap!(std::str::from_utf8(
+                                &unwrap!(adata.current_data_entry()).value
+                            )), // todo: fix
                             "KEY2"
                         ),
                         _ => panic!("UNEXPECTED DATA!"),
@@ -2693,19 +2664,23 @@ mod tests {
             let client2 = client.clone();
             let client3 = client.clone();
 
-            let adataref = ADataAddress::UnpubUnseq { name, tag };
-            let mut data = UnpubUnseqAppendOnlyData::new(name, tag);
+            let adataref = Address::Private { name, tag };
+            let mut data = PrivateSequence::new(name, tag);
 
-            let mut perms = BTreeMap::<PublicKey, ADataUnpubPermissionSet>::new();
-            let set = ADataUnpubPermissionSet::new(true, true, true);
+            let mut perms = BTreeMap::<PublicKey, PrivateUserAccess>::new();
+            let mut permissions = BTreeSet::new();
+            let _ = permissions.insert(AccessType::Read);
+            let _ = permissions.insert(AccessType::Append);
+            let _ = permissions.insert(AccessType::ModifyPermissions);
+            let user_access = PrivateUserAccess::new(permissions);
 
-            let _ = perms.insert(client.public_key(), set);
+            let _ = perms.insert(client.public_key(), user_access);
 
-            unwrap!(data.append_permissions(
-                ADataUnpubPermissions {
-                    permissions: perms,
-                    entries_index: 0,
-                    owners_index: 0,
+            unwrap!(data.set_access_list(
+                PrivateAccessList {
+                    access_list: perms,
+                    expected_data_version: 0,
+                    expected_owners_version: 0,
                 },
                 0
             ));
@@ -2716,35 +2691,35 @@ mod tests {
             let val1 = b"VALUE1".to_vec();
             let val2 = b"VALUE2".to_vec();
 
-            let kvdata = vec![ADataEntry::new(key1, val1), ADataEntry::new(key2, val2)];
+            let kvdata = vec![key1, val1, key2, val2];
 
-            unwrap!(data.append(kvdata));
+            unwrap!(data.append(kvdata, Some(0)));
 
-            let owner = ADataOwner {
+            let owner = Owner {
                 public_key: client.public_key(),
-                entries_index: 2,
-                permissions_index: 1,
+                expected_data_version: 2,
+                expected_access_list_version: 1,
             };
 
-            unwrap!(data.append_owner(owner, 0));
+            unwrap!(data.set_owner(owner, 0));
 
-            let owner2 = ADataOwner {
+            let owner2 = Owner {
                 public_key: client1.public_key(),
-                entries_index: 2,
-                permissions_index: 1,
+                expected_data_version: 2,
+                expected_access_list_version: 1,
             };
 
-            let owner3 = ADataOwner {
+            let owner3 = Owner {
                 public_key: client2.public_key(),
-                entries_index: 2,
-                permissions_index: 1,
+                expected_data_version: 2,
+                expected_access_list_version: 1,
             };
 
             client
-                .put_adata(AData::UnpubUnseq(data))
+                .put_sequence(Sequence::Private(data))
                 .and_then(move |_| {
                     client1
-                        .set_adata_owners(adataref, owner2, 1)
+                        .set_sequence_owner(adataref, owner2, 1)
                         .then(move |res| {
                             assert!(res.is_ok());
                             Ok(())
@@ -2752,15 +2727,15 @@ mod tests {
                 })
                 .and_then(move |_| {
                     client2
-                        .set_adata_owners(adataref, owner3, 2)
+                        .set_sequence_owner(adataref, owner3, 2)
                         .then(move |res| {
                             assert!(res.is_ok());
                             Ok(())
                         })
                 })
                 .and_then(move |_| {
-                    client3.get_adata(adataref).map(move |data| match data {
-                        AData::UnpubUnseq(adata) => assert_eq!(adata.owners_index(), 3),
+                    client3.get_sequence(adataref).map(move |data| match data {
+                        Sequence::Private(adata) => assert_eq!(adata.expected_owners_version(), 3),
                         _ => panic!("UNEXPECTED DATA!"),
                     })
                 })
@@ -2832,14 +2807,14 @@ mod tests {
             client
                 .put_idata(idata)
                 .and_then(move |_| {
-                    let mut adata = UnpubSeqAppendOnlyData::new(name, tag);
-                    let owner = ADataOwner {
+                    let mut adata = PrivateSequence::new(name, tag);
+                    let owner = Owner {
                         public_key: c2.public_key(),
-                        entries_index: 0,
-                        permissions_index: 0,
+                        expected_data_version: 0,
+                        expected_access_list_version: 0,
                     };
-                    unwrap!(adata.append_owner(owner, 0));
-                    c2.put_adata(adata.into())
+                    unwrap!(adata.set_owner(owner, 0));
+                    c2.put_sequence(adata.into())
                 })
                 .and_then(move |_| {
                     let mdata = UnseqMutableData::new(name, tag, c3.public_key());
@@ -2847,7 +2822,7 @@ mod tests {
                 })
                 .and_then(move |_| c4.get_balance(None))
                 .and_then(move |balance| {
-                    c5.delete_adata(ADataAddress::from_kind(ADataKind::UnpubSeq, name, tag))
+                    c5.delete_private_sequence(Address::from_scope(Scope::Private, name, tag))
                         .map(move |_| balance)
                 })
                 .and_then(move |balance| {

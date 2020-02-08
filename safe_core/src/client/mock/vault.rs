@@ -118,7 +118,7 @@ fn check_perms_adata(data: &AData, request: &Request, requester: PublicKey) -> S
             data.check_permission(ADataAction::ManagePermissions, requester)
         }
         Request::SetADataOwner { .. } => data.check_is_last_owner(requester),
-        Request::DeleteAData(_) => match data {
+        Request::DeletePrivateSequence(_) => match data {
             AData::PubSeq(_) | AData::PubUnseq(_) => Err(SndError::InvalidOperation),
             AData::UnpubSeq(_) | AData::UnpubUnseq(_) => data.check_is_last_owner(requester),
         },
@@ -941,61 +941,63 @@ impl Vault {
                 Response::Mutation(result)
             }
             Request::GetAData(address) => {
-                let result = self.get_adata(address, requester_pk, request);
+                let result = self.get_sequence(address, requester_pk, request);
                 Response::GetAData(result)
             }
-            Request::DeleteAData(address) => {
+            Request::DeletePrivateSequence(address) => {
                 let id = DataId::AppendOnly(address);
-                let result = self
-                    .get_adata(address, requester_pk, request)
-                    .and_then(move |data| match data {
-                        // Cannot be deleted as it is a published data.
-                        AData::PubSeq(_) | AData::PubUnseq(_) => Err(SndError::InvalidOperation),
-                        AData::UnpubSeq(_) | AData::UnpubUnseq(_) => {
-                            self.delete_data(id);
-                            Ok(())
-                        }
-                    });
+                let result =
+                    self.get_sequence(address, requester_pk, request)
+                        .and_then(move |data| match data {
+                            // Cannot be deleted as it is a published data.
+                            AData::PubSeq(_) | AData::PubUnseq(_) => {
+                                Err(SndError::InvalidOperation)
+                            }
+                            AData::UnpubSeq(_) | AData::UnpubUnseq(_) => {
+                                self.delete_data(id);
+                                Ok(())
+                            }
+                        });
                 Response::Mutation(result)
             }
             Request::GetADataShell {
                 address,
                 data_index,
             } => {
-                let result = self
-                    .get_adata(address, requester_pk, request)
-                    .and_then(move |data| {
-                        let index = match data_index {
-                            ADataIndex::FromStart(index) => index,
-                            ADataIndex::FromEnd(index) => (data.permissions_index() - index),
-                        };
-                        data.shell(index)
-                    });
+                let result =
+                    self.get_sequence(address, requester_pk, request)
+                        .and_then(move |data| {
+                            let index = match data_index {
+                                ADataIndex::FromStart(index) => index,
+                                ADataIndex::FromEnd(index) => (data.permissions_index() - index),
+                            };
+                            data.shell(index)
+                        });
                 Response::GetADataShell(result)
             }
             Request::GetADataRange { address, range } => {
-                let result = self
-                    .get_adata(address, requester_pk, request)
-                    .and_then(move |data| {
-                        data.in_range(range.0, range.1).ok_or(SndError::NoSuchEntry)
-                    });
+                let result =
+                    self.get_sequence(address, requester_pk, request)
+                        .and_then(move |data| {
+                            data.in_range(range.0, range.1).ok_or(SndError::NoSuchEntry)
+                        });
                 Response::GetADataRange(result)
             }
             Request::GetADataValue { address, key } => {
                 let result = self
-                    .get_adata(address, requester_pk, request)
+                    .get_sequence(address, requester_pk, request)
                     .and_then(move |data| data.get(&key).cloned().ok_or(SndError::NoSuchEntry));
                 Response::GetADataValue(result)
             }
             Request::GetADataIndices(address) => {
                 let result = self
-                    .get_adata(address, requester_pk, request)
+                    .get_sequence(address, requester_pk, request)
                     .and_then(move |data| data.indices());
                 Response::GetADataIndices(result)
             }
             Request::GetADataLastEntry(address) => {
                 let result = self
-                    .get_adata(address, requester_pk, request)
+                    .get_sequence(address, requester_pk, request)
                     .and_then(move |data| data.last_entry().cloned().ok_or(SndError::NoSuchEntry));
                 Response::GetADataLastEntry(result)
             }
@@ -1003,7 +1005,7 @@ impl Vault {
                 address,
                 permissions_index,
             } => {
-                let data = self.get_adata(address, requester_pk, request);
+                let data = self.get_sequence(address, requester_pk, request);
 
                 match (address.kind(), data) {
                     (kind, Ok(ref data)) if kind.is_pub() && data.is_pub() => {
@@ -1028,7 +1030,7 @@ impl Vault {
                 user,
             } => {
                 let result = self
-                    .get_adata(address, requester_pk, request)
+                    .get_sequence(address, requester_pk, request)
                     .and_then(move |data| data.pub_user_permissions(user, permissions_index));
                 Response::GetPubADataUserPermissions(result)
             }
@@ -1037,17 +1039,17 @@ impl Vault {
                 permissions_index,
                 public_key,
             } => {
-                let result = self
-                    .get_adata(address, requester_pk, request)
-                    .and_then(move |data| {
-                        data.unpub_user_permissions(public_key, permissions_index)
-                    });
+                let result =
+                    self.get_sequence(address, requester_pk, request)
+                        .and_then(move |data| {
+                            data.unpub_user_permissions(public_key, permissions_index)
+                        });
                 Response::GetUnpubADataUserPermissions(result)
             }
             Request::AppendSeq { append, index } => {
                 let id = DataId::AppendOnly(append.address);
                 let result = self
-                    .get_adata(append.address, requester_pk, request)
+                    .get_sequence(append.address, requester_pk, request)
                     .and_then(move |data| match data {
                         AData::PubSeq(mut adata) => {
                             adata.append(append.values, index)?;
@@ -1068,7 +1070,7 @@ impl Vault {
             Request::AppendUnseq(append) => {
                 let id = DataId::AppendOnly(append.address);
                 let result = self
-                    .get_adata(append.address, requester_pk, request)
+                    .get_sequence(append.address, requester_pk, request)
                     .and_then(move |data| match data {
                         AData::PubUnseq(mut adata) => {
                             adata.append(append.values)?;
@@ -1092,29 +1094,29 @@ impl Vault {
                 permissions_index,
             } => {
                 let id = DataId::AppendOnly(address);
-                let result = self
-                    .get_adata(address, requester_pk, request)
-                    .and_then(move |data| match address {
-                        ADataAddress::PubSeq { .. } => match data {
-                            AData::PubSeq(mut adata) => {
-                                adata.append_permissions(permissions, permissions_index)?;
-                                self.commit_mutation(requester.name());
-                                self.insert_data(id, Data::AppendOnly(AData::PubSeq(adata)));
-                                Ok(())
-                            }
-                            _ => Err(SndError::NoSuchData),
-                        },
-                        ADataAddress::PubUnseq { .. } => match data {
-                            AData::PubUnseq(mut adata) => {
-                                adata.append_permissions(permissions, permissions_index)?;
-                                self.commit_mutation(requester.name());
-                                self.insert_data(id, Data::AppendOnly(AData::PubUnseq(adata)));
-                                Ok(())
-                            }
-                            _ => Err(SndError::NoSuchData),
-                        },
-                        _ => Err(SndError::AccessDenied),
-                    });
+                let result =
+                    self.get_sequence(address, requester_pk, request)
+                        .and_then(move |data| match address {
+                            ADataAddress::PubSeq { .. } => match data {
+                                AData::PubSeq(mut adata) => {
+                                    adata.append_permissions(permissions, permissions_index)?;
+                                    self.commit_mutation(requester.name());
+                                    self.insert_data(id, Data::AppendOnly(AData::PubSeq(adata)));
+                                    Ok(())
+                                }
+                                _ => Err(SndError::NoSuchData),
+                            },
+                            ADataAddress::PubUnseq { .. } => match data {
+                                AData::PubUnseq(mut adata) => {
+                                    adata.append_permissions(permissions, permissions_index)?;
+                                    self.commit_mutation(requester.name());
+                                    self.insert_data(id, Data::AppendOnly(AData::PubUnseq(adata)));
+                                    Ok(())
+                                }
+                                _ => Err(SndError::NoSuchData),
+                            },
+                            _ => Err(SndError::AccessDenied),
+                        });
                 Response::Mutation(result)
             }
             Request::AddUnpubADataPermissions {
@@ -1124,7 +1126,7 @@ impl Vault {
             } => {
                 let id = DataId::AppendOnly(address);
                 let result = self
-                    .get_adata(address, requester_pk, request)
+                    .get_sequence(address, requester_pk, request)
                     .and_then(|data| match address {
                         ADataAddress::UnpubSeq { .. } => match data.clone() {
                             AData::UnpubSeq(mut adata) => {
@@ -1154,64 +1156,67 @@ impl Vault {
                 owners_index,
             } => {
                 let id = DataId::AppendOnly(address);
-                let result = self
-                    .get_adata(address, requester_pk, request)
-                    .and_then(move |data| match address {
-                        ADataAddress::PubSeq { .. } => match data {
-                            AData::PubSeq(mut adata) => {
-                                adata.append_owner(owner, owners_index)?;
-                                self.commit_mutation(requester.name());
-                                self.insert_data(id, Data::AppendOnly(AData::PubSeq(adata)));
-                                Ok(())
-                            }
-                            _ => Err(SndError::NoSuchData),
-                        },
-                        ADataAddress::PubUnseq { .. } => match data {
-                            AData::PubUnseq(mut adata) => {
-                                adata.append_owner(owner, owners_index)?;
-                                self.commit_mutation(requester.name());
-                                self.insert_data(id, Data::AppendOnly(AData::PubUnseq(adata)));
-                                Ok(())
-                            }
-                            _ => Err(SndError::NoSuchData),
-                        },
-                        ADataAddress::UnpubSeq { .. } => match data.clone() {
-                            AData::UnpubSeq(mut adata) => {
-                                adata.append_owner(owner, owners_index)?;
-                                self.commit_mutation(requester.name());
-                                self.insert_data(id, Data::AppendOnly(AData::UnpubSeq(adata)));
-                                Ok(())
-                            }
-                            _ => Err(SndError::NoSuchData),
-                        },
-                        ADataAddress::UnpubUnseq { .. } => match data {
-                            AData::UnpubUnseq(mut adata) => {
-                                adata.append_owner(owner, owners_index)?;
-                                self.commit_mutation(requester.name());
-                                self.insert_data(id, Data::AppendOnly(AData::UnpubUnseq(adata)));
-                                Ok(())
-                            }
-                            _ => Err(SndError::NoSuchData),
-                        },
-                    });
+                let result =
+                    self.get_sequence(address, requester_pk, request)
+                        .and_then(move |data| match address {
+                            ADataAddress::PubSeq { .. } => match data {
+                                AData::PubSeq(mut adata) => {
+                                    adata.append_owner(owner, owners_index)?;
+                                    self.commit_mutation(requester.name());
+                                    self.insert_data(id, Data::AppendOnly(AData::PubSeq(adata)));
+                                    Ok(())
+                                }
+                                _ => Err(SndError::NoSuchData),
+                            },
+                            ADataAddress::PubUnseq { .. } => match data {
+                                AData::PubUnseq(mut adata) => {
+                                    adata.append_owner(owner, owners_index)?;
+                                    self.commit_mutation(requester.name());
+                                    self.insert_data(id, Data::AppendOnly(AData::PubUnseq(adata)));
+                                    Ok(())
+                                }
+                                _ => Err(SndError::NoSuchData),
+                            },
+                            ADataAddress::UnpubSeq { .. } => match data.clone() {
+                                AData::UnpubSeq(mut adata) => {
+                                    adata.append_owner(owner, owners_index)?;
+                                    self.commit_mutation(requester.name());
+                                    self.insert_data(id, Data::AppendOnly(AData::UnpubSeq(adata)));
+                                    Ok(())
+                                }
+                                _ => Err(SndError::NoSuchData),
+                            },
+                            ADataAddress::UnpubUnseq { .. } => match data {
+                                AData::UnpubUnseq(mut adata) => {
+                                    adata.append_owner(owner, owners_index)?;
+                                    self.commit_mutation(requester.name());
+                                    self.insert_data(
+                                        id,
+                                        Data::AppendOnly(AData::UnpubUnseq(adata)),
+                                    );
+                                    Ok(())
+                                }
+                                _ => Err(SndError::NoSuchData),
+                            },
+                        });
                 Response::Mutation(result)
             }
             Request::GetADataOwners {
                 address,
                 owners_index,
             } => {
-                let result = self
-                    .get_adata(address, requester_pk, request)
-                    .and_then(move |data| {
-                        let index = match owners_index {
-                            ADataIndex::FromStart(index) => index,
-                            ADataIndex::FromEnd(index) => (data.owners_index() - index),
-                        };
-                        match data.owner(index) {
-                            Some(owner) => Ok(*owner),
-                            None => Err(SndError::NoSuchEntry),
-                        }
-                    });
+                let result =
+                    self.get_sequence(address, requester_pk, request)
+                        .and_then(move |data| {
+                            let index = match owners_index {
+                                ADataIndex::FromStart(index) => index,
+                                ADataIndex::FromEnd(index) => (data.owners_index() - index),
+                            };
+                            match data.owner(index) {
+                                Some(owner) => Ok(*owner),
+                                None => Err(SndError::NoSuchEntry),
+                            }
+                        });
                 Response::GetADataOwners(result)
             }
         };
@@ -1279,7 +1284,7 @@ impl Vault {
         }
     }
 
-    pub fn get_adata(
+    pub fn get_sequence(
         &mut self,
         address: ADataAddress,
         requester_pk: PublicKey,
