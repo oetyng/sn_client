@@ -1,4 +1,4 @@
-// Copyright 2018 MaidSafe.net limited.
+// Copyright 2020 MaidSafe.net limited.
 //
 // This SAFE Network Software is licensed to you under The General Public License (GPL), version 3.
 // Unless required by applicable law or agreed to in writing, the SAFE Network Software distributed
@@ -15,7 +15,7 @@ mod tests;
 
 pub use self::account::{Account, CoinBalance};
 pub use self::connection_manager::{ConnectionManager, RequestHookFn};
-use safe_nd::{ADataAddress, IDataAddress, MDataAddress};
+use safe_nd::{Address, IDataAddress, MDataAddress};
 use serde::{Deserialize, Serialize};
 
 /// Identifier for a data.
@@ -25,6 +25,6 @@ pub enum DataId {
     Immutable(IDataAddress),
     /// Identifier of mutable data.
     Mutable(MDataAddress),
-    /// Identifier of appendonly data.
-    AppendOnly(ADataAddress),
+    /// Identifier of Sequence.
+    Sequence(Address),
 }

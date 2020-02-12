@@ -1,4 +1,4 @@
-// Copyright 2018 MaidSafe.net limited.
+// Copyright 2020 MaidSafe.net limited.
 //
 // This SAFE Network Software is licensed to you under The General Public License (GPL), version 3.
 // Unless required by applicable law or agreed to in writing, the SAFE Network Software distributed
@@ -23,11 +23,11 @@ use futures::sync::mpsc::{self, UnboundedReceiver};
 use futures::Future;
 use rand::thread_rng;
 use safe_nd::{
-    ADataPubPermissionSet, AppFullId, AppPermissions, ClientFullId, Coins, Error, IData, MData,
-    MDataAction, MDataAddress, MDataEntries, MDataEntryActions, MDataPermissionSet,
-    MDataSeqEntryAction, MDataSeqEntryActions, MDataSeqValue, MDataValue, MDataValues, Message,
-    MessageId, PubImmutableData, PublicId, PublicKey, Request, RequestType, Response,
-    SeqMutableData, UnpubImmutableData, UnseqMutableData, XorName,
+    AppFullId, AppPermissions, ClientFullId, Coins, Error, IData, MData, MDataAction, MDataAddress,
+    MDataEntries, MDataEntryActions, MDataPermissionSet, MDataSeqEntryAction, MDataSeqEntryActions,
+    MDataSeqValue, MDataValue, MDataValues, Message, MessageId, PubImmutableData, PublicId,
+    PublicKey, PublicUserAccess, Request, RequestType, Response, SeqMutableData,
+    UnpubImmutableData, UnseqMutableData, XorName,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;

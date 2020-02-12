@@ -2343,7 +2343,7 @@ mod tests {
     }
 
     #[test]
-    pub fn adata_permissions_test() {
+    pub fn sequence_permissions_test() {
         random_client(move |client| {
             let client1 = client.clone();
             let client2 = client.clone();
@@ -2356,7 +2356,7 @@ mod tests {
 
             let name = XorName(rand::random());
             let tag = 15000;
-            let adataref = Address::Private { name, tag };
+            let sequence_ref = Address::Private { name, tag };
             let mut data = PrivateSequence::new(name, tag);
             let mut perms = BTreeMap::<PublicKey, PrivateUserAccess>::new();
             let mut permissions = BTreeSet::new();
@@ -2381,12 +2381,12 @@ mod tests {
 
             unwrap!(data.append(kvdata, Some(0)));
             // Test push
-            unwrap!(data.append(vec![key4, val4], Some(3)));
+            unwrap!(data.append(vec![key4, val4], Some(6)));
 
             unwrap!(data.set_access_list(
                 PrivateAccessList {
                     access_list: perms,
-                    expected_data_version: 4,
+                    expected_data_version: 8,
                     expected_owners_version: 0,
                 },
                 0
@@ -2410,13 +2410,13 @@ mod tests {
 
             let perm_set = PrivateAccessList {
                 access_list: perms2,
-                expected_data_version: 4,
+                expected_data_version: 8,
                 expected_owners_version: 1,
             };
 
             let owner = Owner {
                 public_key: client.public_key(),
-                expected_data_version: 4,
+                expected_data_version: 8,
                 expected_access_list_version: 1,
             };
 
@@ -2448,47 +2448,49 @@ mod tests {
                 })
                 .and_then(move |_| {
                     client2
-                        .get_sequence_range(adataref, (index_start, index_end))
+                        .get_sequence_range(sequence_ref, (index_start, index_end))
                         .map(move |data| {
                             assert_eq!(
-                                unwrap!(std::str::from_utf8(&unwrap!(data.last()))), // todo: fix
-                                "KEY2"
+                                unwrap!(std::str::from_utf8(&unwrap!(data.last()))),
+                                "VALUE3"
                             );
                             assert_eq!(
                                 unwrap!(std::str::from_utf8(&unwrap!(data.last()))), // todo: fix
-                                "VALUE2"
+                                "VALUE3"
                             );
                         })
                 })
                 .and_then(move |_| {
-                    client3.get_sequence_indices(adataref).map(move |data| {
-                        assert_eq!(data.data_version, 4);
+                    client3.get_sequence_indices(sequence_ref).map(move |data| {
+                        assert_eq!(data.data_version, 8);
                         assert_eq!(data.owners_version, 1);
                         assert_eq!(data.access_list_version, 1);
                     })
                 })
                 .and_then(move |_| {
                     client4
-                        .get_sequence_value(adataref, Version::FromStart(0))
+                        .get_sequence_value(sequence_ref, Version::FromStart(0))
                         .map(move |data| {
-                            assert_eq!(unwrap!(std::str::from_utf8(data.as_slice())), "VALUE1");
-                            // todo: fix
+                            assert_eq!(unwrap!(std::str::from_utf8(data.as_slice())), "KEY1");
                         })
                 })
                 .and_then(move |_| {
                     client5
-                        .get_sequence_current_entry(adataref)
+                        .get_sequence_current_entry(sequence_ref)
                         .map(move |data| {
-                            assert_eq!(unwrap!(std::str::from_utf8(data.value.as_slice())), "KEY4"); // todo: fix
                             assert_eq!(
                                 unwrap!(std::str::from_utf8(data.value.as_slice())),
+                                "VALUE4"
+                            );
+                            assert_eq!(
+                                unwrap!(std::str::from_utf8(data.value.as_slice())), // todo: fix
                                 "VALUE4"
                             );
                         })
                 })
                 .and_then(move |_| {
                     client6
-                        .set_private_sequence_access_list(adataref, perm_set, 1)
+                        .set_private_sequence_access_list(sequence_ref, perm_set, 1)
                         .then(move |res| {
                             assert!(res.is_ok());
                             Ok(())
@@ -2496,7 +2498,7 @@ mod tests {
                 })
                 .and_then(move |_| {
                     client7
-                        .get_private_sequence_access_list_at_index(adataref, perm_index)
+                        .get_private_sequence_access_list_at_index(sequence_ref, perm_index)
                         .map(move |data| {
                             let set = unwrap!(data.access_list.get(&sim_client1));
                             assert!(set.is_allowed(AccessType::Append));
@@ -2505,7 +2507,7 @@ mod tests {
                 .and_then(move |_| {
                     client8
                         .get_private_sequence_user_permissions(
-                            adataref,
+                            sequence_ref,
                             index_start,
                             client8.public_key(),
                         )
@@ -2525,7 +2527,7 @@ mod tests {
             let client1 = client.clone();
             let client2 = client.clone();
 
-            let adataref = Address::Public { name, tag };
+            let sequence_ref = Address::Public { name, tag };
             let mut data = PublicSequence::new(name, tag);
 
             let mut perms = BTreeMap::<User, PublicUserAccess>::new();
@@ -2553,7 +2555,7 @@ mod tests {
 
             let values = vec![key1, val1, key2, val2];
 
-            let append = AppendOperation::new(adataref, values, None); // Some(ExpectedVersion)
+            let append = AppendOperation::new(sequence_ref, values, None); // Some(ExpectedVersion)
 
             let owner = Owner {
                 public_key: client.public_key(),
@@ -2572,15 +2574,17 @@ mod tests {
                     })
                 })
                 .and_then(move |_| {
-                    client2.get_sequence(adataref).map(move |data| match data {
-                        Sequence::Public(adata) => assert_eq!(
-                            unwrap!(std::str::from_utf8(
-                                &unwrap!(adata.current_data_entry()).value
-                            )), // todo: fix
-                            "KEY2"
-                        ),
-                        _ => panic!("UNEXPECTED DATA!"),
-                    })
+                    client2
+                        .get_sequence(sequence_ref)
+                        .map(move |data| match data {
+                            Sequence::Public(adata) => assert_eq!(
+                                unwrap!(std::str::from_utf8(
+                                    &unwrap!(adata.current_data_entry()).value
+                                )),
+                                "VALUE2"
+                            ),
+                            _ => panic!("UNEXPECTED DATA!"),
+                        })
                 })
                 .then(|res| res)
         });
@@ -2594,7 +2598,7 @@ mod tests {
             let client1 = client.clone();
             let client2 = client.clone();
 
-            let adataref = Address::Private { name, tag };
+            let sequence_ref = Address::Private { name, tag };
             let mut data = PrivateSequence::new(name, tag);
 
             let mut perms = BTreeMap::<PublicKey, PrivateUserAccess>::new();
@@ -2622,7 +2626,7 @@ mod tests {
 
             let values = vec![key1, val1, key2, val2];
 
-            let append = AppendOperation::new(adataref, values, None); // Some(ExpectedVersion)
+            let append = AppendOperation::new(sequence_ref, values, None); // Some(ExpectedVersion)
 
             let owner = Owner {
                 public_key: client.public_key(),
@@ -2641,15 +2645,17 @@ mod tests {
                     })
                 })
                 .and_then(move |_| {
-                    client2.get_sequence(adataref).map(move |data| match data {
-                        Sequence::Private(adata) => assert_eq!(
-                            unwrap!(std::str::from_utf8(
-                                &unwrap!(adata.current_data_entry()).value
-                            )), // todo: fix
-                            "KEY2"
-                        ),
-                        _ => panic!("UNEXPECTED DATA!"),
-                    })
+                    client2
+                        .get_sequence(sequence_ref)
+                        .map(move |data| match data {
+                            Sequence::Private(adata) => assert_eq!(
+                                unwrap!(std::str::from_utf8(
+                                    &unwrap!(adata.current_data_entry()).value
+                                )),
+                                "VALUE2"
+                            ),
+                            _ => panic!("UNEXPECTED DATA!"),
+                        })
                 })
                 .then(|res| res)
         });
@@ -2664,7 +2670,7 @@ mod tests {
             let client2 = client.clone();
             let client3 = client.clone();
 
-            let adataref = Address::Private { name, tag };
+            let sequence_ref = Address::Private { name, tag };
             let mut data = PrivateSequence::new(name, tag);
 
             let mut perms = BTreeMap::<PublicKey, PrivateUserAccess>::new();
@@ -2697,7 +2703,7 @@ mod tests {
 
             let owner = Owner {
                 public_key: client.public_key(),
-                expected_data_version: 2,
+                expected_data_version: 4,
                 expected_access_list_version: 1,
             };
 
@@ -2705,13 +2711,13 @@ mod tests {
 
             let owner2 = Owner {
                 public_key: client1.public_key(),
-                expected_data_version: 2,
+                expected_data_version: 4,
                 expected_access_list_version: 1,
             };
 
             let owner3 = Owner {
                 public_key: client2.public_key(),
-                expected_data_version: 2,
+                expected_data_version: 4,
                 expected_access_list_version: 1,
             };
 
@@ -2719,7 +2725,7 @@ mod tests {
                 .put_sequence(Sequence::Private(data))
                 .and_then(move |_| {
                     client1
-                        .set_sequence_owner(adataref, owner2, 1)
+                        .set_sequence_owner(sequence_ref, owner2, 1)
                         .then(move |res| {
                             assert!(res.is_ok());
                             Ok(())
@@ -2727,17 +2733,21 @@ mod tests {
                 })
                 .and_then(move |_| {
                     client2
-                        .set_sequence_owner(adataref, owner3, 2)
+                        .set_sequence_owner(sequence_ref, owner3, 2)
                         .then(move |res| {
                             assert!(res.is_ok());
                             Ok(())
                         })
                 })
                 .and_then(move |_| {
-                    client3.get_sequence(adataref).map(move |data| match data {
-                        Sequence::Private(adata) => assert_eq!(adata.expected_owners_version(), 3),
-                        _ => panic!("UNEXPECTED DATA!"),
-                    })
+                    client3
+                        .get_sequence(sequence_ref)
+                        .map(move |data| match data {
+                            Sequence::Private(adata) => {
+                                assert_eq!(adata.expected_owners_version(), 3)
+                            }
+                            _ => panic!("UNEXPECTED DATA!"),
+                        })
                 })
                 .then(|res| res)
         });

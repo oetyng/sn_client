@@ -35,8 +35,6 @@ fn data_created_by_an_app() {
     let data: Vec<Sequence> = vec![
         PublicSequence::new(name, tag).into(),
         PrivateSequence::new(name, tag).into(),
-        PublicSequence::new(name, tag).into(),
-        PrivateSequence::new(name, tag).into(),
     ];
     for mut invalid_data in data {
         let variant = invalid_data.scope();
@@ -88,8 +86,6 @@ fn managing_permissions_for_an_app() {
     let data: Vec<Sequence> = vec![
         PublicSequence::new(name, tag).into(),
         PrivateSequence::new(name, tag).into(),
-        PublicSequence::new(name, tag).into(),
-        PrivateSequence::new(name, tag).into(),
     ];
     for mut adata in data {
         let variant = adata.scope();
@@ -97,7 +93,7 @@ fn managing_permissions_for_an_app() {
         let (address_tx, address_rx) = mpsc::channel();
         let (allow_app_tx, allow_app_rx) = mpsc::channel();
         let (app_allowed_tx, app_allowed_rx) = mpsc::channel();
-        let (finish_tx, finish_rx) = mpsc::channel();
+        //let (finish_tx, finish_rx) = mpsc::channel();
 
         unwrap!(app.send(move |client, _| {
             let client2 = client.clone();
@@ -152,7 +148,7 @@ fn managing_permissions_for_an_app() {
                             address,
                             PublicAccessList {
                                 access_list,
-                                expected_data_version: 4,
+                                expected_data_version: 8,
                                 expected_owners_version: 1,
                             },
                             1,
@@ -168,7 +164,7 @@ fn managing_permissions_for_an_app() {
                             address,
                             PrivateAccessList {
                                 access_list,
-                                expected_data_version: 4,
+                                expected_data_version: 8,
                                 expected_owners_version: 1,
                             },
                             1,
@@ -252,132 +248,132 @@ fn managing_permissions_for_an_app() {
                 .then(move |res| {
                     let entries = unwrap!(res);
                     assert_eq!(entries.len(), 5);
-                    unwrap!(finish_tx.send(()));
+                    //unwrap!(finish_tx.send(()));
                     Ok(())
                 })
                 .into_box()
                 .into()
         }));
 
-        let _handle = thread::spawn(move || {
-            random_client(move |client| {
-                let client2 = client.clone();
-                let client3 = client.clone();
-                let client4 = client.clone();
+        //let _handle = thread::spawn(move || {
+        random_client(move |client| {
+            let client2 = client.clone();
+            let client3 = client.clone();
+            let client4 = client.clone();
 
-                // Wait for the app's key and add it to the data's permissions list
-                let app_pk: PublicKey = unwrap!(app_key_rx.recv());
+            // Wait for the app's key and add it to the data's permissions list
+            let app_pk: PublicKey = unwrap!(app_key_rx.recv());
 
-                let address = *adata.address();
-                match adata {
-                    Sequence::Public(ref mut seq) => {
+            let address = *adata.address();
+            match adata {
+                Sequence::Public(ref mut seq) => {
+                    let mut access_list = BTreeMap::new();
+                    let mut permissions = BTreeMap::new();
+                    let _ = permissions.insert(AccessType::Append, true);
+                    let _ = access_list
+                        .insert(User::Specific(app_pk), PublicUserAccess::new(permissions));
+                    unwrap!(seq.set_access_list(
+                        PublicAccessList {
+                            access_list,
+                            expected_data_version: 0,
+                            expected_owners_version: 0,
+                        },
+                        0
+                    ));
+                }
+                Sequence::Private(ref mut seq) => {
+                    let mut access_list = BTreeMap::new();
+                    let mut permissions = BTreeSet::new();
+                    let _ = permissions.insert(AccessType::Read);
+                    let _ = permissions.insert(AccessType::Append);
+                    let _ = access_list.insert(app_pk, PrivateUserAccess::new(permissions));
+                    unwrap!(seq.set_access_list(
+                        PrivateAccessList {
+                            access_list,
+                            expected_data_version: 0,
+                            expected_owners_version: 0,
+                        },
+                        0
+                    ));
+                }
+            }
+
+            unwrap!(adata.set_owner(
+                Owner {
+                    public_key: client.owner_key(),
+                    expected_data_version: 0,
+                    expected_access_list_version: 1,
+                },
+                0
+            ));
+
+            let values = vec![
+                vec![0],
+                vec![1, 2, 3],
+                vec![1],
+                vec![1, 2, 3],
+                vec![2],
+                vec![1, 2, 3],
+            ];
+            unwrap!(adata.append(&AppendOperation::new(address, values, Some(0))));
+            // todo: test both apis
+            // if adata.is_seq() {
+            //     unwrap!(adata.append(entries, 0));
+            // } else {
+            //     unwrap!(adata.append(entries));
+            // }
+
+            client
+                .list_auth_keys_and_version()
+                .and_then(move |(_, version)| {
+                    client2.ins_auth_key(app_pk, Default::default(), version + 1)
+                })
+                .and_then(move |()| client3.put_sequence(adata))
+                .and_then(move |()| {
+                    // Send the address of the data
+                    unwrap!(address_tx.send(address));
+                    // Wait for the app's signal to give it data access
+                    unwrap!(allow_app_rx.recv());
+                    if address.is_public() {
                         let mut access_list = BTreeMap::new();
                         let mut permissions = BTreeMap::new();
                         let _ = permissions.insert(AccessType::Append, true);
+                        let _ = permissions.insert(AccessType::ModifyPermissions, true);
                         let _ = access_list
                             .insert(User::Specific(app_pk), PublicUserAccess::new(permissions));
-                        unwrap!(seq.set_access_list(
+                        client4.set_public_sequence_access_list(
+                            address,
                             PublicAccessList {
                                 access_list,
-                                expected_data_version: 0,
-                                expected_owners_version: 0,
+                                expected_data_version: 4,
+                                expected_owners_version: 1,
                             },
-                            0
-                        ));
-                    }
-                    Sequence::Private(ref mut seq) => {
+                            1,
+                        )
+                    } else {
                         let mut access_list = BTreeMap::new();
                         let mut permissions = BTreeSet::new();
                         let _ = permissions.insert(AccessType::Read);
                         let _ = permissions.insert(AccessType::Append);
+                        let _ = permissions.insert(AccessType::ModifyPermissions);
                         let _ = access_list.insert(app_pk, PrivateUserAccess::new(permissions));
-                        unwrap!(seq.set_access_list(
+                        client4.set_private_sequence_access_list(
+                            address,
                             PrivateAccessList {
                                 access_list,
-                                expected_data_version: 0,
-                                expected_owners_version: 0,
+                                expected_data_version: 4,
+                                expected_owners_version: 1,
                             },
-                            0
-                        ));
+                            1,
+                        )
                     }
-                }
-
-                unwrap!(adata.set_owner(
-                    Owner {
-                        public_key: client.owner_key(),
-                        expected_data_version: 0,
-                        expected_access_list_version: 1,
-                    },
-                    0
-                ));
-
-                let values = vec![
-                    vec![0],
-                    vec![1, 2, 3],
-                    vec![1],
-                    vec![1, 2, 3],
-                    vec![2],
-                    vec![1, 2, 3],
-                ];
-                unwrap!(adata.append(&AppendOperation::new(address, values, Some(0))));
-                // todo: test both apis
-                // if adata.is_seq() {
-                //     unwrap!(adata.append(entries, 0));
-                // } else {
-                //     unwrap!(adata.append(entries));
-                // }
-
-                client
-                    .list_auth_keys_and_version()
-                    .and_then(move |(_, version)| {
-                        client2.ins_auth_key(app_pk, Default::default(), version + 1)
-                    })
-                    .and_then(move |()| client3.put_sequence(adata))
-                    .and_then(move |()| {
-                        // Send the address of the data
-                        unwrap!(address_tx.send(address));
-                        // Wait for the app's signal to give it data access
-                        unwrap!(allow_app_rx.recv());
-                        if address.is_public() {
-                            let mut access_list = BTreeMap::new();
-                            let mut permissions = BTreeMap::new();
-                            let _ = permissions.insert(AccessType::Append, true);
-                            let _ = permissions.insert(AccessType::ModifyPermissions, true);
-                            let _ = access_list
-                                .insert(User::Specific(app_pk), PublicUserAccess::new(permissions));
-                            client4.set_public_sequence_access_list(
-                                address,
-                                PublicAccessList {
-                                    access_list,
-                                    expected_data_version: 4,
-                                    expected_owners_version: 1,
-                                },
-                                1,
-                            )
-                        } else {
-                            let mut access_list = BTreeMap::new();
-                            let mut permissions = BTreeSet::new();
-                            let _ = permissions.insert(AccessType::Read);
-                            let _ = permissions.insert(AccessType::Append);
-                            let _ = permissions.insert(AccessType::ModifyPermissions);
-                            let _ = access_list.insert(app_pk, PrivateUserAccess::new(permissions));
-                            client4.set_private_sequence_access_list(
-                                address,
-                                PrivateAccessList {
-                                    access_list,
-                                    expected_data_version: 4,
-                                    expected_owners_version: 1,
-                                },
-                                1,
-                            )
-                        }
-                    })
-                    // Signal that the app is allowed access to the data
-                    .map(move |()| unwrap!(app_allowed_tx.send(())))
-                    .map_err(AppError::from)
-            })
-        });
-        unwrap!(finish_rx.recv());
+                })
+                // Signal that the app is allowed access to the data
+                .map(move |()| unwrap!(app_allowed_tx.send(())))
+                .map_err(AppError::from)
+        })
+        // });
+        // unwrap!(finish_rx.recv());
     }
 }
 
@@ -394,8 +390,6 @@ fn restricted_access_and_deletion() {
     let data: Vec<Sequence> = vec![
         PublicSequence::new(name, tag).into(),
         PrivateSequence::new(name, tag).into(),
-        PublicSequence::new(name, tag).into(),
-        PrivateSequence::new(name, tag).into(),
     ];
     for mut adata in data {
         let variant = adata.scope();
@@ -404,7 +398,7 @@ fn restricted_access_and_deletion() {
         let (app_authed_tx, app_authed_rx) = mpsc::channel();
         let (revoke_app_tx, revoke_app_rx) = mpsc::channel();
         let (app_revoked_tx, app_revoked_rx) = mpsc::channel();
-        let (finish_tx, finish_rx) = mpsc::channel();
+        //let (finish_tx, finish_rx) = mpsc::channel();
 
         let (authenticator, _, _) = create_authenticator();
         let auth_req = create_random_auth_req();
@@ -425,7 +419,7 @@ fn restricted_access_and_deletion() {
                     match (res, address.is_public()) {
                         (Ok(data), true) => {
                             assert_eq!(*data.address(), address);
-                            assert_eq!(data.expected_data_version(), 3);
+                            assert_eq!(data.expected_data_version(), 6);
                         }
                         (Err(CoreError::DataError(SndError::AccessDenied)), false) => {}
                         (res, _) => panic!("{:?}: Unexpected result: {:?}", variant, res),
@@ -485,124 +479,124 @@ fn restricted_access_and_deletion() {
                         (Err(CoreError::DataError(SndError::AccessDenied)), false) => {}
                         (res, _) => panic!("{:?}: Unexpected result: {:?}", variant, res),
                     }
-                    unwrap!(finish_tx.send(()));
+                    //unwrap!(finish_tx.send(()));
                     Ok(())
                 })
                 .into_box()
                 .into()
         }));
 
-        let handle = thread::spawn(move || {
-            unwrap!(auth_run(&authenticator, move |client| {
-                let client2 = client.clone();
-                let client3 = client.clone();
-                let client4 = client.clone();
-                let client5 = client.clone();
-                let client6 = client.clone();
+        //let handle = thread::spawn(move || {
+        unwrap!(auth_run(&authenticator, move |client| {
+            let client2 = client.clone();
+            let client3 = client.clone();
+            let client4 = client.clone();
+            let client5 = client.clone();
+            let client6 = client.clone();
 
-                unwrap!(adata.set_owner(
-                    Owner {
-                        public_key: client.owner_key(),
-                        expected_data_version: 0,
-                        expected_access_list_version: 0,
-                    },
-                    0
-                ));
-                let entries = vec![
-                    vec![0],
-                    vec![1, 2, 3],
-                    vec![1],
-                    vec![1, 2, 3],
-                    vec![2],
-                    vec![1, 2, 3],
-                ];
-                let address = *adata.address();
-                unwrap!(adata.append(&AppendOperation::new(address, entries, Some(0))));
-                // todo: test both apis
-                // if address.is_seq() {
-                //     unwrap!(adata.append(entries, 0));
-                // } else {
-                //     unwrap!(adata.append(entries));
-                // }
-                client
-                    .put_sequence(adata)
-                    .and_then(move |()| {
-                        // Send the address of the data on the network
-                        unwrap!(address_tx.send(address));
-                        client2.list_auth_keys_and_version()
-                    })
-                    .and_then(move |(_, version)| {
-                        let app_key: PublicKey = unwrap!(app_key_rx.recv());
-                        client3
-                            .ins_auth_key(
-                                app_key,
-                                AppPermissions {
-                                    transfer_coins: true,
-                                    perform_mutations: true,
-                                    get_balance: true,
-                                },
-                                version + 1,
-                            )
-                            .map(move |()| (app_key, version + 1))
-                    })
-                    .and_then(move |(key, version)| {
-                        if address.is_public() {
-                            let mut access_list = BTreeMap::new();
-                            let mut permissions = BTreeMap::new();
-                            let _ = permissions.insert(AccessType::Append, true);
-                            let _ = access_list
-                                .insert(User::Specific(key), PublicUserAccess::new(permissions));
-                            client4.set_public_sequence_access_list(
-                                address,
-                                PublicAccessList {
-                                    access_list,
-                                    expected_data_version: 3,
-                                    expected_owners_version: 1,
-                                },
-                                0,
-                            )
-                        } else {
-                            let mut access_list = BTreeMap::new();
-                            let mut permissions = BTreeSet::new();
-                            let _ = permissions.insert(AccessType::Read);
-                            let _ = permissions.insert(AccessType::Append);
-                            let _ = access_list.insert(key, PrivateUserAccess::new(permissions));
-                            client4.set_private_sequence_access_list(
-                                address,
-                                PrivateAccessList {
-                                    access_list,
-                                    expected_data_version: 3,
-                                    expected_owners_version: 1,
-                                },
-                                0,
-                            )
-                        }
-                        .map(move |()| (key, version))
-                    })
-                    .and_then(move |(key, version)| {
-                        // Signal that the app has been authenticated
-                        unwrap!(app_authed_tx.send(()));
-                        // Wait for the signal to revoke the app
-                        unwrap!(revoke_app_rx.recv());
-                        client5.del_auth_key(key, version + 1)
-                    })
-                    .and_then(move |()| {
-                        // Signal that the app is revoked
-                        unwrap!(app_revoked_tx.send(()));
-                        client6.delete_private_sequence(address)
-                    })
-                    .then(move |res| {
-                        match (res, address.is_public()) {
-                            (Err(CoreError::DataError(SndError::InvalidOperation)), true) => (),
-                            (Ok(()), false) => (),
-                            (res, _) => panic!("{:?}: Unexpected result: {:?}", variant, res),
-                        }
-                        Ok::<_, AuthError>(())
-                    })
-            }));
-        });
-        unwrap!(finish_rx.recv());
-        unwrap!(handle.join());
+            unwrap!(adata.set_owner(
+                Owner {
+                    public_key: client.owner_key(),
+                    expected_data_version: 0,
+                    expected_access_list_version: 0,
+                },
+                0
+            ));
+            let entries = vec![
+                vec![0],
+                vec![1, 2, 3],
+                vec![1],
+                vec![1, 2, 3],
+                vec![2],
+                vec![1, 2, 3],
+            ];
+            let address = *adata.address();
+            unwrap!(adata.append(&AppendOperation::new(address, entries, Some(0))));
+            // todo: test both apis
+            // if address.is_seq() {
+            //     unwrap!(adata.append(entries, 0));
+            // } else {
+            //     unwrap!(adata.append(entries));
+            // }
+            client
+                .put_sequence(adata)
+                .and_then(move |()| {
+                    // Send the address of the data on the network
+                    unwrap!(address_tx.send(address));
+                    client2.list_auth_keys_and_version()
+                })
+                .and_then(move |(_, version)| {
+                    let app_key: PublicKey = unwrap!(app_key_rx.recv());
+                    client3
+                        .ins_auth_key(
+                            app_key,
+                            AppPermissions {
+                                transfer_coins: true,
+                                perform_mutations: true,
+                                get_balance: true,
+                            },
+                            version + 1,
+                        )
+                        .map(move |()| (app_key, version + 1))
+                })
+                .and_then(move |(key, version)| {
+                    if address.is_public() {
+                        let mut access_list = BTreeMap::new();
+                        let mut permissions = BTreeMap::new();
+                        let _ = permissions.insert(AccessType::Append, true);
+                        let _ = access_list
+                            .insert(User::Specific(key), PublicUserAccess::new(permissions));
+                        client4.set_public_sequence_access_list(
+                            address,
+                            PublicAccessList {
+                                access_list,
+                                expected_data_version: 3,
+                                expected_owners_version: 1,
+                            },
+                            0,
+                        )
+                    } else {
+                        let mut access_list = BTreeMap::new();
+                        let mut permissions = BTreeSet::new();
+                        let _ = permissions.insert(AccessType::Read);
+                        let _ = permissions.insert(AccessType::Append);
+                        let _ = access_list.insert(key, PrivateUserAccess::new(permissions));
+                        client4.set_private_sequence_access_list(
+                            address,
+                            PrivateAccessList {
+                                access_list,
+                                expected_data_version: 3,
+                                expected_owners_version: 1,
+                            },
+                            0,
+                        )
+                    }
+                    .map(move |()| (key, version))
+                })
+                .and_then(move |(key, version)| {
+                    // Signal that the app has been authenticated
+                    unwrap!(app_authed_tx.send(()));
+                    // Wait for the signal to revoke the app
+                    unwrap!(revoke_app_rx.recv());
+                    client5.del_auth_key(key, version + 1)
+                })
+                .and_then(move |()| {
+                    // Signal that the app is revoked
+                    unwrap!(app_revoked_tx.send(()));
+                    client6.delete_private_sequence(address)
+                })
+                .then(move |res| {
+                    match (res, address.is_public()) {
+                        (Err(CoreError::DataError(SndError::InvalidOperation)), true) => (),
+                        (Ok(()), false) => (),
+                        (res, _) => panic!("{:?}: Unexpected result: {:?}", variant, res),
+                    }
+                    Ok::<_, AuthError>(())
+                })
+        }));
+        // });
+        // unwrap!(finish_rx.recv());
+        // unwrap!(handle.join());
     }
 }
 
@@ -616,17 +610,14 @@ fn public_permissions_with_app_restrictions() {
     let app = create_app();
     let name: XorName = rand::random();
     let tag = 15_002;
-    let data: Vec<Sequence> = vec![
-        PublicSequence::new(name, tag).into(),
-        PublicSequence::new(name, tag).into(),
-    ];
+    let data: Vec<Sequence> = vec![PublicSequence::new(name, tag).into()];
     for mut adata in data {
-        let variant = adata.scope();
+        let scope = adata.scope();
         let (app_key_tx, app_key_rx) = mpsc::channel();
         let (address_tx, address_rx) = mpsc::channel();
         let (remove_app_tx, remove_app_rx) = mpsc::channel();
         let (app_removed_tx, app_removed_rx) = mpsc::channel();
-        let (finish_tx, finish_rx) = mpsc::channel();
+        //let (finish_tx, finish_rx) = mpsc::channel();
 
         unwrap!(app.send(move |client, _| {
             let client2 = client.clone();
@@ -681,7 +672,7 @@ fn public_permissions_with_app_restrictions() {
                         address,
                         PublicAccessList {
                             access_list,
-                            expected_data_version: 4,
+                            expected_data_version: 2,
                             expected_owners_version: 1,
                         },
                         1,
@@ -694,7 +685,7 @@ fn public_permissions_with_app_restrictions() {
                     unwrap!(remove_app_tx.send(()));
                     unwrap!(app_removed_rx.recv());
                     let values = vec![vec![6], vec![1, 2, 3]];
-                    client4.append(AppendOperation::new(address, values, Some(3)))
+                    client4.append(AppendOperation::new(address, values, Some(6)))
                     // todo: test both apis
                     // if address.is_seq() {
                     //     client4.append(AppendOperation { address, values }, 3)
@@ -705,14 +696,14 @@ fn public_permissions_with_app_restrictions() {
                 .then(move |res| {
                     match res {
                         Err(CoreError::DataError(SndError::AccessDenied)) => (),
-                        res => panic!("{:?}: Unexpected result: {:?}", variant, res),
+                        res => panic!("{:?}: Unexpected result: {:?}", scope, res),
                     }
                     let access_list = BTreeMap::new();
                     client5.set_public_sequence_access_list(
                         address,
                         PublicAccessList {
                             access_list,
-                            expected_data_version: 7,
+                            expected_data_version: 4,
                             expected_owners_version: 1,
                         },
                         3,
@@ -721,7 +712,7 @@ fn public_permissions_with_app_restrictions() {
                 .then(move |res| {
                     match res {
                         Err(CoreError::DataError(SndError::AccessDenied)) => (),
-                        res => panic!("{:?}: Unexpected result: {:?}", variant, res),
+                        res => panic!("{:?}: Unexpected result: {:?}", scope, res),
                     }
                     client6.get_sequence(address)
                 })
@@ -729,103 +720,102 @@ fn public_permissions_with_app_restrictions() {
                     let data = unwrap!(res);
                     assert_eq!(*data.address(), address);
                     random_app_access(address);
-                    unwrap!(finish_tx.send(()));
+                    //unwrap!(finish_tx.send(()));
                     Ok(())
                 })
                 .into_box()
                 .into()
         }));
 
-        let handle = thread::spawn(move || {
-            random_client(move |client| {
-                let client2 = client.clone();
+        //let handle = thread::spawn(move || {
+        random_client(move |client| {
+            let client2 = client.clone();
 
-                // Wait for the app's key and add it to the data's permission list
-                let app_pk: PublicKey = unwrap!(app_key_rx.recv());
+            // Wait for the app's key and add it to the data's permission list
+            let app_pk: PublicKey = unwrap!(app_key_rx.recv());
 
-                let mut access_list = BTreeMap::new();
-                let mut permissions = BTreeMap::new();
-                let _ = permissions.insert(AccessType::ModifyPermissions, true);
-                let _ = access_list.insert(
-                    User::Specific(app_pk),
-                    PublicUserAccess::new(permissions.clone()),
-                );
+            let mut access_list = BTreeMap::new();
+            let mut permissions = BTreeMap::new();
+            let _ = permissions.insert(AccessType::ModifyPermissions, true);
+            let _ = access_list.insert(
+                User::Specific(app_pk),
+                PublicUserAccess::new(permissions.clone()),
+            );
 
-                let _ = permissions.insert(AccessType::Append, true);
-                let _ = permissions.remove(&AccessType::ModifyPermissions);
-                let _ = access_list.insert(User::Anyone, PublicUserAccess::new(permissions));
+            let _ = permissions.insert(AccessType::Append, true);
+            let _ = permissions.remove(&AccessType::ModifyPermissions);
+            let _ = access_list.insert(User::Anyone, PublicUserAccess::new(permissions));
 
-                unwrap!(adata.set_public_access_list(
-                    PublicAccessList {
-                        access_list,
-                        expected_data_version: 0,
-                        expected_owners_version: 0,
-                    },
-                    0
-                ));
+            unwrap!(adata.set_public_access_list(
+                PublicAccessList {
+                    access_list,
+                    expected_data_version: 0,
+                    expected_owners_version: 0,
+                },
+                0
+            ));
 
-                unwrap!(adata.set_owner(
-                    Owner {
-                        public_key: client.owner_key(),
-                        expected_data_version: 0,
-                        expected_access_list_version: 1,
-                    },
-                    0
-                ));
+            unwrap!(adata.set_owner(
+                Owner {
+                    public_key: client.owner_key(),
+                    expected_data_version: 0,
+                    expected_access_list_version: 1,
+                },
+                0
+            ));
 
-                let entries = vec![
-                    vec![0],
-                    vec![1, 2, 3],
-                    vec![1],
-                    vec![1, 2, 3],
-                    vec![2],
-                    vec![1, 2, 3],
-                ];
-                let address = *adata.address();
-                unwrap!(adata.append(&AppendOperation::new(address, entries, Some(0))));
-                // todo: test both apis
-                // if address.is_seq() {
-                //     unwrap!(adata.append(entries, 0));
-                // } else {
-                //     unwrap!(adata.append(entries));
-                // }
-                client
-                    .put_sequence(adata)
-                    .and_then(move |()| {
-                        // Send the address of the data on the network
-                        unwrap!(address_tx.send(address));
-                        // Wait for the signal to remove the app from the permissions list
-                        unwrap!(remove_app_rx.recv());
-                        let mut access_list = BTreeMap::new();
-                        let mut permissions = BTreeMap::new();
-                        let _ = permissions.insert(AccessType::Append, false);
-                        let _ = permissions.insert(AccessType::ModifyPermissions, false);
-                        let _ = access_list.insert(
-                            User::Specific(app_pk),
-                            PublicUserAccess::new(permissions.clone()),
-                        );
-                        let _ = permissions.remove(&AccessType::ModifyPermissions);
-                        let _ =
-                            access_list.insert(User::Anyone, PublicUserAccess::new(permissions));
-                        client2.set_public_sequence_access_list(
-                            address,
-                            PublicAccessList {
-                                access_list,
-                                expected_data_version: 5,
-                                expected_owners_version: 1,
-                            },
-                            2,
-                        )
-                    })
-                    .and_then(move |()| {
-                        // Signal that the app is removed from the permissions list
-                        unwrap!(app_removed_tx.send(()));
-                        Ok(())
-                    })
-            })
-        });
-        unwrap!(handle.join());
-        unwrap!(finish_rx.recv());
+            let entries = vec![
+                vec![0],
+                vec![1, 2, 3],
+                vec![1],
+                vec![1, 2, 3],
+                vec![2],
+                vec![1, 2, 3],
+            ];
+            let address = *adata.address();
+            unwrap!(adata.append(&AppendOperation::new(address, entries, Some(0))));
+            // todo: test both apis
+            // if address.is_seq() {
+            //     unwrap!(adata.append(entries, 0));
+            // } else {
+            //     unwrap!(adata.append(entries));
+            // }
+            client
+                .put_sequence(adata)
+                .and_then(move |()| {
+                    // Send the address of the data on the network
+                    unwrap!(address_tx.send(address));
+                    // Wait for the signal to remove the app from the permissions list
+                    unwrap!(remove_app_rx.recv());
+                    let mut access_list = BTreeMap::new();
+                    let mut permissions = BTreeMap::new();
+                    let _ = permissions.insert(AccessType::Append, false);
+                    let _ = permissions.insert(AccessType::ModifyPermissions, false);
+                    let _ = access_list.insert(
+                        User::Specific(app_pk),
+                        PublicUserAccess::new(permissions.clone()),
+                    );
+                    let _ = permissions.remove(&AccessType::ModifyPermissions);
+                    let _ = access_list.insert(User::Anyone, PublicUserAccess::new(permissions));
+                    client2.set_public_sequence_access_list(
+                        address,
+                        PublicAccessList {
+                            access_list,
+                            expected_data_version: 6,
+                            expected_owners_version: 1,
+                        },
+                        2,
+                    )
+                })
+                .and_then(move |()| {
+                    // Signal that the app is removed from the permissions list
+                    unwrap!(app_removed_tx.send(()));
+                    Ok(())
+                })
+        })
+        //});
+        //unwrap!(handle.join());
+        //unwrap!(finish_rx.recv());
     }
 }
 

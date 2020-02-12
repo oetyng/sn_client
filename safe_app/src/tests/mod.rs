@@ -347,8 +347,8 @@ fn published_data_access() {
     let name: XorName = rand::random();
     let tag = 15002;
     let pub_idata = PubImmutableData::new(unwrap!(utils::generate_random_vector(30)));
-    let mut pub_unseq_adata = PublicSequence::new(name, tag);
-    let mut pub_seq_adata = PublicSequence::new(name, tag);
+    let mut public_sequence = PublicSequence::new(name, tag);
+    let mut private_sequence = PrivateSequence::new(name, tag);
 
     // Create a random client and store some data
     {
@@ -363,18 +363,18 @@ fn published_data_access() {
                 expected_data_version: 0,
                 expected_access_list_version: 0,
             };
-            unwrap!(pub_seq_adata.set_owner(owner, 0));
-            unwrap!(pub_unseq_adata.set_owner(owner, 0));
+            unwrap!(public_sequence.set_owner(owner, 0));
+            unwrap!(private_sequence.set_owner(owner, 0));
 
             client
                 .put_idata(pub_idata)
-                .and_then(move |_| client2.put_sequence(pub_seq_adata.into()))
-                .and_then(move |_| client3.put_sequence(pub_unseq_adata.into()))
+                .and_then(move |_| client2.put_sequence(public_sequence.into()))
+                .and_then(move |_| client3.put_sequence(private_sequence.into()))
         });
     }
 
-    let pub_seq_adata_addr = Address::Public { name, tag };
-    let pub_unseq_adata_addr = Address::Private { name, tag };
+    let public_address = Address::Public { name, tag };
+    let private_address = Address::Private { name, tag };
 
     // Unregistered apps should be able to read the data
     {
@@ -391,18 +391,18 @@ fn published_data_access() {
                 .and_then(move |data| {
                     assert_eq!(data, pub_idata.into());
                     client2
-                        .get_sequence(pub_unseq_adata_addr)
+                        .get_sequence(private_address)
                         .map_err(AppError::from)
                         .map(move |data| {
-                            assert_eq!(*data.address(), pub_unseq_adata_addr);
+                            assert_eq!(*data.address(), private_address);
                         })
                 })
                 .then(move |_| {
                     client3
-                        .get_sequence(pub_seq_adata_addr)
+                        .get_sequence(public_address)
                         .map_err(AppError::from)
                         .map(move |data| {
-                            assert_eq!(*data.address(), pub_seq_adata_addr);
+                            assert_eq!(*data.address(), public_address);
                         })
                 })
         }));
@@ -420,18 +420,18 @@ fn published_data_access() {
             .and_then(move |data| {
                 assert_eq!(data, pub_idata.into());
                 client2
-                    .get_sequence(pub_unseq_adata_addr)
+                    .get_sequence(private_address)
                     .map_err(AppError::from)
                     .map(move |data| {
-                        assert_eq!(*data.address(), pub_unseq_adata_addr);
+                        assert_eq!(*data.address(), private_address);
                     })
             })
             .then(move |_| {
                 client3
-                    .get_sequence(pub_seq_adata_addr)
+                    .get_sequence(public_address)
                     .map_err(AppError::from)
                     .map(move |data| {
-                        assert_eq!(*data.address(), pub_seq_adata_addr);
+                        assert_eq!(*data.address(), public_address);
                     })
             })
     }));
