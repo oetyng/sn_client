@@ -23,7 +23,7 @@ use futures::sync::mpsc::{self, UnboundedReceiver};
 use futures::Future;
 use rand::thread_rng;
 use safe_nd::{
-    ADataPubPermissionSet, AppFullId, AppPermissions, ClientFullId, Coins, Error, IData, MData,
+    ADataPubPermissionSet, AppFullId, AppPermissions, ClientFullId, Money, Error, IData, MData,
     MDataAction, MDataAddress, MDataEntries, MDataEntryActions, MDataPermissionSet,
     MDataSeqEntryAction, MDataSeqEntryActions, MDataSeqValue, MDataValue, MDataValues, Message,
     MessageId, PubImmutableData, PublicId, PublicKey, Request, RequestType, Response,
@@ -112,8 +112,8 @@ fn immutable_data_basics() {
         orig_data
     );
 
-    // Initial balance is 10 coins
-    let balance = unwrap!(Coins::from_str("10"));
+    // Initial balance is 10 money
+    let balance = unwrap!(Money::from_str("10"));
     let balance = unwrap!(balance.checked_sub(COST_OF_PUT));
     send_req_expect_ok!(
         &mut connection_manager,
@@ -696,7 +696,7 @@ fn mutable_data_permissions() {
         &client_safe_key,
         AppPermissions {
             get_balance: true,
-            transfer_coins: true,
+            transfer_money: true,
             perform_mutations: true,
         },
     );
@@ -922,7 +922,7 @@ fn mutable_data_ownership() {
         &client_safe_key,
         AppPermissions {
             get_balance: true,
-            transfer_coins: true,
+            transfer_money: true,
             perform_mutations: true,
         },
     );
@@ -977,7 +977,7 @@ fn pub_idata_rpc() {
     }
 
     let app_perms = AppPermissions {
-        transfer_coins: true,
+        transfer_money: true,
         get_balance: true,
         perform_mutations: true,
     };
@@ -1015,7 +1015,7 @@ fn unpub_idata_rpc() {
     );
 
     let app_perms = AppPermissions {
-        transfer_coins: true,
+        transfer_money: true,
         get_balance: true,
         perform_mutations: true,
     };
@@ -1090,7 +1090,7 @@ fn auth_keys() {
         key: app_key,
         version: 0,
         permissions: AppPermissions {
-            transfer_coins: true,
+            transfer_money: true,
             get_balance: true,
             perform_mutations: true,
         },
@@ -1110,7 +1110,7 @@ fn auth_keys() {
         key: app_key,
         version: 1,
         permissions: AppPermissions {
-            transfer_coins: true,
+            transfer_money: true,
             get_balance: true,
             perform_mutations: true,
         },
@@ -1132,7 +1132,7 @@ fn auth_keys() {
     match response {
         Response::ListAuthKeysAndVersion(res) => match res {
             Ok(keys) => {
-                assert_eq!(unwrap!(keys.0.get(&app_key)).transfer_coins, true);
+                assert_eq!(unwrap!(keys.0.get(&app_key)).transfer_money, true);
                 assert_eq!(unwrap!(keys.0.get(&app_key)).get_balance, true);
                 assert_eq!(unwrap!(keys.0.get(&app_key)).perform_mutations, true);
                 assert_eq!(keys.1, 1);
@@ -1210,7 +1210,7 @@ fn auth_actions_from_app() {
     let (mut connection_manager, _, client_safe_key, owner_key) = setup(None);
 
     let app_perms = AppPermissions {
-        transfer_coins: true,
+        transfer_money: true,
         get_balance: true,
         perform_mutations: true,
     };
@@ -1285,7 +1285,7 @@ fn low_balance_check() {
         let (mut connection_manager, _, client_safe_key, owner_key) = setup(Some(Config {
             quic_p2p: QuicP2pConfig::with_default_cert(),
             dev: Some(DevConfig {
-                mock_unlimited_coins: *unlimited,
+                mock_unlimited_money: *unlimited,
                 mock_in_memory_storage: false,
                 mock_vault_path: None,
             }),
@@ -1313,7 +1313,7 @@ fn low_balance_check() {
             &client_safe_key,
             Request::GetBalance,
         );
-        let balance: Coins = match rpc_response {
+        let balance: Money = match rpc_response {
             Response::GetBalance(res) => unwrap!(res),
             _ => panic!("Unexpected response"),
         };
@@ -1331,7 +1331,7 @@ fn low_balance_check() {
         );
 
         match response {
-            Response::Transaction(Ok(_)) => (),
+            Response::MoneyReceipt(Ok(_)) => (),
             x => panic!("Unexpected Error {:?}", x),
         }
 
@@ -1374,7 +1374,7 @@ fn invalid_config_mock_vault_path() {
     let (mut _conn_manager, _, _client_safe_key, _owner_key) = setup(Some(Config {
         quic_p2p: QuicP2pConfig::with_default_cert(),
         dev: Some(DevConfig {
-            mock_unlimited_coins: false,
+            mock_unlimited_money: false,
             mock_in_memory_storage: false,
             mock_vault_path: Some(String::from("./this_path_should_not_exist")),
         }),
@@ -1401,7 +1401,7 @@ fn config_mock_vault_path() {
     let (mut conn_manager, _, client_safe_key, owner_key) = setup(Some(Config {
         quic_p2p: QuicP2pConfig::with_default_cert(),
         dev: Some(DevConfig {
-            mock_unlimited_coins: false,
+            mock_unlimited_money: false,
             mock_in_memory_storage: false,
             mock_vault_path: Some(String::from("./tmp")),
         }),
@@ -1545,8 +1545,8 @@ fn setup(
     } else {
         unwrap!(ConnectionManager::new(Default::default(), &conn_manager_tx))
     };
-    let coins = unwrap!(Coins::from_str("10"));
-    let client_safe_key = register_client(&mut conn_manager, coins, client_id);
+    let money = unwrap!(Money::from_str("10"));
+    let client_safe_key = register_client(&mut conn_manager, money, client_id);
     let owner_key = client_safe_key.public_key();
     (conn_manager, conn_manager_rx, client_safe_key, owner_key)
 }
@@ -1555,11 +1555,11 @@ fn setup(
 // Return the safe key which will be used to sign the requests that follow.
 fn register_client(
     conn_manager: &mut ConnectionManager,
-    coins: Coins,
+    money: Money,
     client_id: ClientFullId,
 ) -> SafeKey {
     let client_public_key = client_id.public_id().public_key();
-    conn_manager.create_balance(*client_public_key, coins);
+    conn_manager.create_balance(*client_public_key, money);
 
     SafeKey::client(client_id)
 }

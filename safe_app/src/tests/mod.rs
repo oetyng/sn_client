@@ -8,7 +8,7 @@
 // Software.
 
 mod append_only_data;
-mod coins;
+mod money;
 mod unpublished_mutable_data;
 
 use crate::test_utils::{create_app, create_random_auth_req, gen_app_exchange_info};
@@ -27,7 +27,7 @@ use safe_core::utils::test_utils::random_client;
 use safe_core::ConnectionManager;
 use safe_core::{client::COST_OF_PUT, Client, CoreError};
 use safe_nd::{
-    ADataAddress, ADataOwner, AppPermissions, AppendOnlyData, Coins, Error as SndError,
+    ADataAddress, ADataOwner, AppPermissions, AppendOnlyData, Money, Error as SndError,
     PubImmutableData, PubSeqAppendOnlyData, PubUnseqAppendOnlyData, UnpubUnseqAppendOnlyData,
     XorName,
 };
@@ -88,7 +88,7 @@ fn get_access_info() {
             app: app_info,
             app_container: true,
             app_permissions: AppPermissions {
-                transfer_coins: true,
+                transfer_money: true,
                 perform_mutations: true,
                 get_balance: true,
             },
@@ -171,7 +171,7 @@ fn authorise_app(
             app: app_info.clone(),
             app_container,
             app_permissions: AppPermissions {
-                transfer_coins: true,
+                transfer_money: true,
                 perform_mutations: true,
                 get_balance: true,
             },
@@ -234,13 +234,13 @@ fn app_container_creation() {
     }
 
     trace!("Making sure no mutations are done when re-authorising the app now.");
-    let orig_balance: Coins = unwrap!(auth_run(&auth, |client| {
+    let orig_balance: Money = unwrap!(auth_run(&auth, |client| {
         client.get_balance(None).map_err(AuthError::from)
     }));
 
     let _ = authorise_app(&auth, &app_info, &app_id, true);
 
-    let new_balance: Coins = unwrap!(auth_run(&auth, |client| {
+    let new_balance: Money = unwrap!(auth_run(&auth, |client| {
         client.get_balance(None).map_err(AuthError::from)
     }));
 
@@ -452,14 +452,14 @@ fn account_info() {
     // Create an app that can access the owner's coin balance and mutate data on behalf of user.
     let mut app_auth_req = create_random_auth_req();
     app_auth_req.app_permissions = AppPermissions {
-        transfer_coins: false,
+        transfer_money: false,
         perform_mutations: true,
         get_balance: true,
     };
 
     let app = unwrap!(create_app_by_req(&app_auth_req));
 
-    let orig_balance: Coins = unwrap!(run(&app, |client, _| {
+    let orig_balance: Money = unwrap!(run(&app, |client, _| {
         client.get_balance(None).map_err(AppError::from)
     }));
 
@@ -469,7 +469,7 @@ fn account_info() {
             .map_err(AppError::from)
     }));
 
-    let new_balance: Coins = unwrap!(run(&app, |client, _| {
+    let new_balance: Money = unwrap!(run(&app, |client, _| {
         client.get_balance(None).map_err(AppError::from)
     }));
 

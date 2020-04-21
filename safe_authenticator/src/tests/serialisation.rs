@@ -29,7 +29,7 @@ use safe_core::ipc::{AppExchangeInfo, AuthReq, Permission};
 use safe_core::utils::test_utils::gen_client_id;
 use safe_core::{mock_vault_path, utils};
 use safe_core::{test_create_balance, Client, FutureExt, MDataInfo};
-use safe_nd::{ClientFullId, Coins};
+use safe_nd::{ClientFullId, Money};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -255,7 +255,7 @@ fn setup() -> Stash {
     let client_id = gen_client_id();
     unwrap!(test_create_balance(
         &client_id,
-        unwrap!(Coins::from_str("10"))
+        unwrap!(Money::from_str("10"))
     ));
 
     Stash {

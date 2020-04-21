@@ -402,7 +402,7 @@ mod mock_routing {
             let app_0 = verify_app_is_revoked(client, app_id_0, ac_entries_0);
             let expected_permissions = AppPermissions {
                 get_balance: true,
-                transfer_coins: true,
+                transfer_money: true,
                 perform_mutations: true,
             };
             let app_1 = verify_app_is_authenticated(client, app_id_1, expected_permissions);
@@ -505,7 +505,7 @@ mod mock_routing {
             let app_1 = verify_app_is_revoked(client, app_id_1, ac_entries_1);
             let expected_permissions = AppPermissions {
                 get_balance: true,
-                transfer_coins: true,
+                transfer_money: true,
                 perform_mutations: true,
             };
             let app_2 = verify_app_is_authenticated(client, app_id_2, expected_permissions);
@@ -667,7 +667,7 @@ fn app_revocation_and_reauth() {
     let new_app_permissions = AppPermissions {
         get_balance: true,
         perform_mutations: false,
-        transfer_coins: false,
+        transfer_money: false,
     };
     auth_req2.app_permissions = new_app_permissions;
     let auth_granted2 = unwrap!(register_app(&authenticator, &auth_req2));

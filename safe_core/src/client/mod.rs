@@ -46,11 +46,11 @@ use quic_p2p::Config as QuicP2pConfig;
 use safe_nd::{
     AData, ADataAddress, ADataAppendOperation, ADataEntries, ADataEntry, ADataIndex, ADataIndices,
     ADataOwner, ADataPermissions, ADataPubPermissionSet, ADataPubPermissions,
-    ADataUnpubPermissionSet, ADataUnpubPermissions, ADataUser, AppPermissions, ClientFullId, Coins,
+    ADataUnpubPermissionSet, ADataUnpubPermissions, ADataUser, AppPermissions, ClientFullId, Money,
     IData, IDataAddress, LoginPacket, MData, MDataAddress, MDataEntries, MDataEntryActions,
     MDataPermissionSet, MDataSeqEntries, MDataSeqEntryActions, MDataSeqValue,
     MDataUnseqEntryActions, MDataValue, MDataValues, Message, MessageId, PublicId, PublicKey,
-    Request, RequestType, Response, SeqMutableData, Transaction, UnseqMutableData, XorName,
+    Request, RequestType, Response, SeqMutableData, TransactionId, UnseqMutableData, XorName,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -67,7 +67,7 @@ pub const IMMUT_DATA_CACHE_SIZE: usize = 300;
 // const CONNECTION_TIMEOUT_SECS: u64 = 40;
 
 /// Expected cost of mutation operations.
-pub const COST_OF_PUT: Coins = Coins::from_nano(1);
+pub const COST_OF_PUT: Money = Money::from_nano(1);
 
 /// Return the `crust::Config` associated with the `crust::Service` (if any).
 pub fn bootstrap_config() -> Result<BootstrapConfig, CoreError> {
@@ -99,10 +99,34 @@ fn send_mutation(client: &impl Client, req: Request) -> Box<CoreFuture<()>> {
 macro_rules! send_as {
     ($client:expr, $request:expr, $response:path, $secret_key:expr) => {
         send_as_helper($client, $request, $secret_key)
-            .and_then(|res| match res {
-                $response(res) => res.map_err(CoreError::from),
-                _ => Err(CoreError::ReceivedUnexpectedEvent),
-            })
+            .and_then(|res| 
+                match res {
+                    Response::MoneyReceipt(result) => {
+                        match result {
+                            Ok(response) => Ok(response.id),
+                            Err(err) => Err(CoreError::from(err) )
+                        }
+                    },
+                    _ => Err(CoreError::from("Unexpected response")),
+                }
+        )
+            .into_box()
+    };
+}
+macro_rules! send_as_and_get_money {
+    ($client:expr, $request:expr, $response:path, $secret_key:expr) => {
+        send_as_helper($client, $request, $secret_key)
+            .and_then(|res| 
+                match res {
+                    Response::MoneyReceipt(result) => {
+                        match result {
+                            Ok(response) => Ok(response.amount),
+                            Err(err) => Err(CoreError::from(err) )
+                        }
+                    },
+                    _ => Err(CoreError::from("Unexpected response")),
+                }
+        )
             .into_box()
     };
 }
@@ -223,22 +247,26 @@ pub trait Client: Clone + 'static {
     }
 
     /// Transfer coin balance
-    fn transfer_coins(
+    fn transfer_money(
         &self,
         client_id: Option<&ClientFullId>,
-        destination: XorName,
-        amount: Coins,
+        to: PublicKey,
+        amount: Money,
         transaction_id: Option<u64>,
-    ) -> Box<CoreFuture<Transaction>> {
-        trace!("Transfer {} coins to {:?}", amount, destination);
+    ) -> Box<CoreFuture<TransactionId>> {
+        trace!("Transfer {} money to {:?}", amount, to);
+        // let from = *client_id.public_id().public_key();
+        let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().public_key() );
+
         send_as!(
             self,
-            Request::TransferCoins {
-                destination,
+            Request::TransferMoney {
+                from, 
+                to,
                 amount,
                 transaction_id: transaction_id.unwrap_or_else(rand::random),
             },
-            Response::Transaction,
+            Response::MoneyReceipt,
             client_id
         )
     }
@@ -247,39 +275,42 @@ pub trait Client: Clone + 'static {
     fn create_balance(
         &self,
         client_id: Option<&ClientFullId>,
-        new_balance_owner: PublicKey,
-        amount: Coins,
+        to: PublicKey,
+        amount: Money,
         transaction_id: Option<u64>,
-    ) -> Box<CoreFuture<Transaction>> {
+    ) -> Box<CoreFuture<TransactionId>> {
         trace!(
-            "Create a new balance for {:?} with {} coins.",
-            new_balance_owner,
+            "Create a new balance for {:?} with {} money.",
+            to,
             amount
         );
+        // let from = *client_id.public_id().public_key();
+        let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().public_key() );
 
         send_as!(
             self,
             Request::CreateBalance {
-                new_balance_owner,
+                to,
+                from, 
                 amount,
-                transaction_id: transaction_id.unwrap_or_else(rand::random),
+                transaction_id: Some(transaction_id.unwrap_or_else(rand::random) ),
             },
-            Response::Transaction,
+            Response::MoneyReceipt,
             client_id
         )
     }
 
-    /// Insert a given login packet at the specified destination
+    /// Insert a given login packet at the specified to
     fn insert_login_packet_for(
         &self,
         client_id: Option<&ClientFullId>,
         new_owner: PublicKey,
-        amount: Coins,
+        amount: Money,
         transaction_id: Option<u64>,
         new_login_packet: LoginPacket,
-    ) -> Box<CoreFuture<Transaction>> {
+    ) -> Box<CoreFuture<TransactionId>> {
         trace!(
-            "Insert a login packet for {:?} preloading the wallet with {} coins.",
+            "Insert a login packet for {:?} preloading the wallet with {} money.",
             new_owner,
             amount
         );
@@ -293,16 +324,17 @@ pub trait Client: Clone + 'static {
                 transaction_id,
                 new_login_packet,
             },
-            Response::Transaction,
+            Response::MoneyReceipt,
             client_id
         )
     }
 
     /// Get the current coin balance.
-    fn get_balance(&self, client_id: Option<&ClientFullId>) -> Box<CoreFuture<Coins>> {
+    fn get_balance(&self, client_id: Option<&ClientFullId>) -> Box<CoreFuture<Money>> {
         trace!("Get balance for {:?}", client_id);
-
-        send_as!(self, Request::GetBalance, Response::GetBalance, client_id)
+        // let pk = *client_id.public_id().public_key();
+        let pk = client_id.map_or_else(|| self.public_key(), |client_id| *client_id.public_id().public_key());
+        send_as_and_get_money!(self, Request::GetBalance(pk), Response::GetBalance, client_id )
     }
 
     /// Put immutable data to the network.
@@ -1084,26 +1116,30 @@ pub trait Client: Clone + 'static {
     fn test_set_balance(
         &self,
         client_id: Option<&ClientFullId>,
-        amount: Coins,
-    ) -> Box<CoreFuture<Transaction>> {
-        let new_balance_owner = client_id.map_or_else(
+        amount: Money,
+    ) -> Box<CoreFuture<TransactionId>> {
+        
+        let to = client_id.map_or_else(
             || self.public_key(),
             |client_id| *client_id.public_id().public_key(),
         );
+
         trace!(
             "Set the coin balance of {:?} to {:?}",
-            new_balance_owner,
+            to,
             amount,
         );
+        let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().public_key() );
 
         send_as!(
             self,
             Request::CreateBalance {
-                new_balance_owner,
+                to,
+                from,
                 amount,
                 transaction_id: rand::random(),
             },
-            Response::Transaction,
+            Response::MoneyReceipt,
             client_id
         )
     }
@@ -1128,20 +1164,23 @@ where
 }
 
 /// Create a new mock balance at an arbitrary address.
-pub fn test_create_balance(owner: &ClientFullId, amount: Coins) -> Result<(), CoreError> {
+pub fn test_create_balance(owner: &ClientFullId, amount: Money) -> Result<(), CoreError> {
     trace!("Create test balance of {} for {:?}", amount, owner);
 
     temp_client(owner, move |mut cm, full_id| {
         // Create the balance for the client
-        let new_balance_owner = match full_id.public_id() {
+        let to = match full_id.public_id() {
             PublicId::Client(id) => *id.public_key(),
             x => return Err(CoreError::from(format!("Unexpected ID type {:?}", x))),
         };
+        let from = *owner.public_id().public_key();
+        // let from = owner.clone().map_or_else( || to.clone(), |id| *id.public_id().public_key() );
 
         let response = req(
             &mut cm,
             Request::CreateBalance {
-                new_balance_owner,
+                to,
+                from,
                 amount,
                 transaction_id: rand::random(),
             },
@@ -1149,18 +1188,18 @@ pub fn test_create_balance(owner: &ClientFullId, amount: Coins) -> Result<(), Co
         )?;
 
         match response {
-            Response::Transaction(res) => res.map(|_| Ok(()))?,
+            Response::MoneyReceipt(res) => res.map(|_| Ok(()))?,
             _ => Err(CoreError::from("Unexpected response")),
         }
     })
 }
 
 /// Get the balance at the given key's location
-pub fn wallet_get_balance(wallet_sk: &ClientFullId) -> Result<Coins, CoreError> {
+pub fn wallet_get_balance(wallet_sk: &ClientFullId) -> Result<Money, CoreError> {
     trace!("Get balance for {:?}", wallet_sk);
-
+    let pk = *wallet_sk.public_id().public_key();
     temp_client(wallet_sk, move |mut cm, full_id| {
-        match req(&mut cm, Request::GetBalance, &full_id)? {
+        match req(&mut cm, Request::GetBalance(pk), &full_id)? {
             Response::GetBalance(res) => res.map_err(CoreError::from),
             _ => Err(CoreError::from("Unexpected response")),
         }
@@ -1170,58 +1209,74 @@ pub fn wallet_get_balance(wallet_sk: &ClientFullId) -> Result<Coins, CoreError> 
 /// Creates a new coin balance on the network.
 pub fn wallet_create_balance(
     client_id: &ClientFullId,
-    new_balance_owner: PublicKey,
-    amount: Coins,
+    to: PublicKey,
+    amount: Money,
     transaction_id: Option<u64>,
-) -> Result<Transaction, CoreError> {
+) -> Result<TransactionId, CoreError> {
     trace!(
-        "Create a new coin balance for {:?} with {} coins.",
-        new_balance_owner,
+        "Create a new coin balance for {:?} with {} money.",
+        to,
         amount
     );
 
     let transaction_id = transaction_id.unwrap_or_else(rand::random);
+    let from = *client_id.public_id().public_key();
+    // let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().public_key() );
 
     temp_client(client_id, move |mut cm, full_id| {
         let response = req(
             &mut cm,
             Request::CreateBalance {
-                new_balance_owner,
+                to,
+                from,
                 amount,
-                transaction_id,
+                transaction_id: Some(transaction_id),
             },
             &full_id,
         )?;
         match response {
-            Response::Transaction(res) => res.map_err(CoreError::from),
+            Response::MoneyReceipt(res) => {
+                match res {
+                    Ok(response) => Ok(response.id),
+                    Err(err) => Err(CoreError::from(err) )
+                }
+            },
             _ => Err(CoreError::from("Unexpected response")),
         }
     })
 }
 
-/// Transfer coins
-pub fn wallet_transfer_coins(
+/// Transfer money
+pub fn wallet_transfer_money(
     client_id: &ClientFullId,
-    destination: XorName,
-    amount: Coins,
+    to: PublicKey,
+    amount: Money,
     transaction_id: Option<u64>,
-) -> Result<Transaction, CoreError> {
-    trace!("Transfer {} coins to {:?}", amount, destination);
+) -> Result<TransactionId, CoreError> {
+    trace!("Transfer {} money to {:?}", amount, to);
 
     let transaction_id = transaction_id.unwrap_or_else(rand::random);
-
+    let from = *client_id.public_id().public_key();
+    // let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().public_key() );
     temp_client(client_id, move |mut cm, full_id| {
         let response = req(
             &mut cm,
-            Request::TransferCoins {
-                destination,
+            Request::TransferMoney {
+                to,
+                from,
                 amount,
                 transaction_id,
             },
             &full_id,
         )?;
+
         match response {
-            Response::Transaction(res) => res.map_err(CoreError::from),
+            Response::MoneyReceipt(res) => {
+                match res {
+                    Ok(response) => Ok(response.id),
+                    Err(err) => Err(CoreError::from(err) )
+                }
+            },
             _ => Err(CoreError::from("Unexpected response")),
         }
     })
@@ -1394,7 +1449,7 @@ mod tests {
     };
     use safe_nd::{
         ADataAction, ADataEntry, ADataKind, ADataOwner, ADataUnpubPermissionSet,
-        ADataUnpubPermissions, AppendOnlyData, Coins, Error as SndError, MDataAction, MDataKind,
+        ADataUnpubPermissions, AppendOnlyData, Money, Error as SndError, MDataAction, MDataKind,
         PubImmutableData, PubSeqAppendOnlyData, SeqAppendOnly, UnpubImmutableData,
         UnpubSeqAppendOnlyData, UnpubUnseqAppendOnlyData, UnseqAppendOnly, XorName,
     };
@@ -1408,8 +1463,8 @@ mod tests {
             let client3 = client.clone();
             let client4 = client.clone();
             let client5 = client.clone();
-            // The `random_client()` initializes the client with 10 coins.
-            let start_bal = unwrap!(Coins::from_str("10"));
+            // The `random_client()` initializes the client with 10 money.
+            let start_bal = unwrap!(Money::from_str("10"));
 
             let value = unwrap!(generate_random_vector::<u8>(10));
             let data = PubImmutableData::new(value.clone());
@@ -1457,8 +1512,8 @@ mod tests {
     #[test]
     fn unpub_idata_test() {
         crate::utils::test_utils::init_log();
-        // The `random_client()` initializes the client with 10 coins.
-        let start_bal = unwrap!(Coins::from_str("10"));
+        // The `random_client()` initializes the client with 10 money.
+        let start_bal = unwrap!(Money::from_str("10"));
 
         random_client(move |client| {
             let client2 = client.clone();
@@ -1768,9 +1823,9 @@ mod tests {
     }
 
     // 1. Create 2 accounts and create a wallet only for account A.
-    // 2. Try to transfer coins from A to inexistent wallet. This request should fail.
+    // 2. Try to transfer money from A to inexistent wallet. This request should fail.
     // 3. Try to request balance of wallet B. This request should fail.
-    // 4. Now create a wallet for account B and transfer some coins to A. This should pass.
+    // 4. Now create a wallet for account B and transfer some money to A. This should pass.
     // 5. Try to request transaction from wallet A using account B. This request should succeed
     // (because transactions are always open).
     #[test]
@@ -1778,7 +1833,7 @@ mod tests {
         let wallet_a_addr = random_client(move |client| {
             let wallet_a_addr: XorName = client.public_key().into();
             client
-                .transfer_coins(None, rand::random(), unwrap!(Coins::from_str("5.0")), None)
+                .transfer_money(None, rand::random(), unwrap!(Money::from_str("5.0")), None)
                 .then(move |res| {
                     match res {
                         Err(CoreError::DataError(SndError::NoSuchBalance)) => (),
@@ -1796,29 +1851,29 @@ mod tests {
                 .get_balance(None)
                 .then(move |res| {
                     // Subtract to cover the cost of inserting the login packet
-                    let expected_amt = unwrap!(Coins::from_str("10")
+                    let expected_amt = unwrap!(Money::from_str("10")
                         .ok()
                         .and_then(|x| x.checked_sub(COST_OF_PUT)));
                     match res {
                         Ok(fetched_amt) => assert_eq!(expected_amt, fetched_amt),
                         res => panic!("Unexpected result: {:?}", res),
                     }
-                    c2.test_set_balance(None, unwrap!(Coins::from_str("50.0")))
+                    c2.test_set_balance(None, unwrap!(Money::from_str("50.0")))
                 })
                 .and_then(move |_| {
-                    c3.transfer_coins(None, wallet_a_addr, unwrap!(Coins::from_str("10")), None)
+                    c3.transfer_money(None, wallet_a_addr, unwrap!(Money::from_str("10")), None)
                 })
                 .then(move |res| {
                     match res {
                         Ok(transaction) => {
-                            assert_eq!(transaction.amount, unwrap!(Coins::from_str("10")))
+                            assert_eq!(transaction.amount, unwrap!(Money::from_str("10")))
                         }
                         res => panic!("Unexpected error: {:?}", res),
                     }
                     c4.get_balance(None)
                 })
                 .then(move |res| {
-                    let expected_amt = unwrap!(Coins::from_str("40"));
+                    let expected_amt = unwrap!(Money::from_str("40"));
                     match res {
                         Ok(fetched_amt) => assert_eq!(expected_amt, fetched_amt),
                         res => panic!("Unexpected result: {:?}", res),
@@ -1841,7 +1896,7 @@ mod tests {
             let client4 = client.clone();
             let client5 = client.clone();
             let wallet1: XorName = client.owner_key().into();
-            let init_bal = unwrap!(Coins::from_str("500.0"));
+            let init_bal = unwrap!(Money::from_str("500.0"));
 
             let client_id = gen_client_id();
             let bls_pk = *client_id.public_id().public_key();
@@ -1849,23 +1904,23 @@ mod tests {
             client
                 .test_set_balance(None, init_bal)
                 .and_then(move |_| {
-                    client1.create_balance(None, bls_pk, unwrap!(Coins::from_str("100.0")), None)
+                    client1.create_balance(None, bls_pk, unwrap!(Money::from_str("100.0")), None)
                 })
                 .and_then(move |transaction| {
-                    assert_eq!(transaction.amount, unwrap!(Coins::from_str("100")));
+                    assert_eq!(transaction.amount, unwrap!(Money::from_str("100")));
                     client2
-                        .transfer_coins(
+                        .transfer_money(
                             Some(&client_id.clone()),
                             wallet1,
-                            unwrap!(Coins::from_str("5.0")),
+                            unwrap!(Money::from_str("5.0")),
                             None,
                         )
                         .map(|transaction| (transaction, client_id))
                 })
                 .and_then(move |(transaction, client_id)| {
-                    assert_eq!(transaction.amount, unwrap!(Coins::from_str("5.0")));
+                    assert_eq!(transaction.amount, unwrap!(Money::from_str("5.0")));
                     client3.get_balance(Some(&client_id)).and_then(|balance| {
-                        assert_eq!(balance, unwrap!(Coins::from_str("95.0")));
+                        assert_eq!(balance, unwrap!(Money::from_str("95.0")));
                         Ok(())
                     })
                 })
@@ -1874,7 +1929,7 @@ mod tests {
                         let expected = calculate_new_balance(
                             init_bal,
                             Some(1),
-                            Some(unwrap!(Coins::from_str("95"))),
+                            Some(unwrap!(Money::from_str("95"))),
                         );
                         assert_eq!(balance, expected);
                         Ok(())
@@ -1888,7 +1943,7 @@ mod tests {
                         .create_balance(
                             Some(&random_source),
                             random_pk,
-                            unwrap!(Coins::from_str("100.0")),
+                            unwrap!(Money::from_str("100.0")),
                             None,
                         )
                         .then(|res| {
@@ -1905,7 +1960,7 @@ mod tests {
     // 1. Create a client A with a wallet and allocate some test safecoin to it.
     // 2. Get the balance and verify it.
     // 3. Create another client B with a wallet holding some safecoin.
-    // 4. Transfer some coins from client B to client A and verify the new balance.
+    // 4. Transfer some money from client B to client A and verify the new balance.
     // 5. Fetch the transaction using the transaction ID and verify the amount.
     // 6. Try to do a coin transfer without enough funds, it should return `InsufficientBalance`
     // 7. Try to do a coin transfer with the amount set to 0, it should return `InvalidOperation`
@@ -1918,10 +1973,10 @@ mod tests {
             let wallet1: XorName = owner_key.into();
 
             client
-                .test_set_balance(None, unwrap!(Coins::from_str("100.0")))
+                .test_set_balance(None, unwrap!(Money::from_str("100.0")))
                 .and_then(move |_| client1.get_balance(None))
                 .and_then(move |balance| {
-                    assert_eq!(balance, unwrap!(Coins::from_str("100.0")));
+                    assert_eq!(balance, unwrap!(Money::from_str("100.0")));
                     Ok(wallet1)
                 })
         });
@@ -1934,11 +1989,11 @@ mod tests {
             let c6 = client.clone();
             let c7 = client.clone();
             let c8 = client.clone();
-            let init_bal = unwrap!(Coins::from_str("10"));
+            let init_bal = unwrap!(Money::from_str("10"));
             client
                 .get_balance(None)
                 .and_then(move |orig_balance| {
-                    c2.transfer_coins(None, wallet1, unwrap!(Coins::from_str("5.0")), None)
+                    c2.transfer_money(None, wallet1, unwrap!(Money::from_str("5.0")), None)
                         .map(move |_| orig_balance)
                 })
                 .and_then(move |orig_balance| {
@@ -1948,9 +2003,9 @@ mod tests {
                 .and_then(move |(new_balance, orig_balance)| {
                     assert_eq!(
                         new_balance,
-                        unwrap!(orig_balance.checked_sub(unwrap!(Coins::from_str("5.0")))),
+                        unwrap!(orig_balance.checked_sub(unwrap!(Money::from_str("5.0")))),
                     );
-                    c4.transfer_coins(None, wallet1, unwrap!(Coins::from_str("5000")), None)
+                    c4.transfer_money(None, wallet1, unwrap!(Money::from_str("5000")), None)
                 })
                 .then(move |res| {
                     match res {
@@ -1959,23 +2014,23 @@ mod tests {
                     }
                     Ok(())
                 })
-                // Check if coins are refunded
+                // Check if money are refunded
                 .and_then(move |_| c5.get_balance(None))
                 .and_then(move |balance| {
                     let expected = calculate_new_balance(
                         init_bal,
                         Some(1),
-                        Some(unwrap!(Coins::from_str("5"))),
+                        Some(unwrap!(Money::from_str("5"))),
                     );
                     assert_eq!(balance, expected);
-                    c6.transfer_coins(None, wallet1, unwrap!(Coins::from_str("0")), None)
+                    c6.transfer_money(None, wallet1, unwrap!(Money::from_str("0")), None)
                 })
                 .then(move |res| {
                     match res {
                         Err(CoreError::DataError(SndError::InvalidOperation)) => (),
                         res => panic!("Unexpected result: {:?}", res),
                     }
-                    c7.test_set_balance(None, unwrap!(Coins::from_str("0")))
+                    c7.test_set_balance(None, unwrap!(Money::from_str("0")))
                 })
                 .and_then(move |_| {
                     let data = PubImmutableData::new(unwrap!(generate_random_vector::<u8>(10)));
@@ -2035,8 +2090,8 @@ mod tests {
             let client4 = client.clone();
             let client5 = client.clone();
             let client6 = client.clone();
-            // The `random_client()` initializes the client with 10 coins.
-            let start_bal = unwrap!(Coins::from_str("10"));
+            // The `random_client()` initializes the client with 10 money.
+            let start_bal = unwrap!(Money::from_str("10"));
             let name = XorName(rand::random());
             let tag = 15001;
             let mut permissions: BTreeMap<_, _> = Default::default();
@@ -2082,7 +2137,7 @@ mod tests {
                             Err(e) => panic!("Unexpected: {:?}", e),
                         })
                 })
-                // Check if coins are refunded
+                // Check if money are refunded
                 .and_then(move |_| client2.get_balance(None))
                 .and_then(move |balance| {
                     let expected_bal = calculate_new_balance(start_bal, Some(2), None);
@@ -2800,12 +2855,12 @@ mod tests {
 
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("50"))
+            unwrap!(Money::from_str("50"))
         ));
 
         let balance = unwrap!(wallet_get_balance(&client_id));
-        let ten_coins = unwrap!(Coins::from_str("10"));
-        assert_eq!(balance, unwrap!(Coins::from_str("50")));
+        let ten_money = unwrap!(Money::from_str("10"));
+        assert_eq!(balance, unwrap!(Money::from_str("50")));
 
         let new_client_id = gen_client_id();
         let new_client_pk = new_client_id.public_id().public_key();
@@ -2813,22 +2868,22 @@ mod tests {
         let txn = unwrap!(wallet_create_balance(
             &client_id,
             *new_client_pk,
-            ten_coins,
+            ten_money,
             None
         ));
-        assert_eq!(txn.amount, ten_coins);
-        let txn2 = unwrap!(wallet_transfer_coins(
-            &client_id, new_wallet, ten_coins, None
+        assert_eq!(txn.amount, ten_money);
+        let txn2 = unwrap!(wallet_transfer_money(
+            &client_id, new_wallet, ten_money, None
         ));
-        assert_eq!(txn2.amount, ten_coins);
+        assert_eq!(txn2.amount, ten_money);
 
         let client_balance = unwrap!(wallet_get_balance(&client_id));
-        let expected = unwrap!(Coins::from_str("30"));
+        let expected = unwrap!(Money::from_str("30"));
         let expected = unwrap!(expected.checked_sub(COST_OF_PUT));
         assert_eq!(client_balance, expected);
 
         let new_client_balance = unwrap!(wallet_get_balance(&new_client_id));
-        assert_eq!(new_client_balance, unwrap!(Coins::from_str("20")));
+        assert_eq!(new_client_balance, unwrap!(Money::from_str("20")));
     }
 
     // 1. Store different variants of unpublished data on the network.

@@ -25,7 +25,7 @@ use log::trace;
 use lru_cache::LruCache;
 use rand::rngs::StdRng;
 use rand::{thread_rng, SeedableRng};
-use safe_nd::{ClientFullId, Coins, LoginPacket, PublicKey, Request, Response};
+use safe_nd::{ClientFullId, Money, LoginPacket, PublicKey, Request, Response};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -98,7 +98,7 @@ impl CoreClient {
         let new_login_packet = LoginPacket::new(acc_loc, client_pk, acc_ciphertext, sig)?;
 
         let balance_client_id = maid_keys.client_id.clone();
-        let new_balance_owner = *balance_client_id.public_id().public_key();
+        let to = *balance_client_id.public_id().public_key();
 
         let balance_client_id = SafeKey::client(balance_client_id);
         let balance_pub_id = balance_client_id.public_id();
@@ -110,18 +110,21 @@ impl CoreClient {
         connection_manager = connection_manager_wrapper_fn(connection_manager);
 
         {
+            let from = client_pk.clone();
+
             // Create the balance for the client
             let response = req(
                 &mut connection_manager,
                 Request::CreateBalance {
-                    new_balance_owner,
-                    amount: unwrap!(Coins::from_str("10")),
+                    to,
+                    from, 
+                    amount: unwrap!(Money::from_str("10")),
                     transaction_id: rand::random(),
                 },
                 &balance_client_id,
             )?;
             let _ = match response {
-                Response::Transaction(res) => res?,
+                Response::MoneyReceipt(res) => res?,
                 _ => return Err(CoreError::from("Unexpected response")),
             };
 

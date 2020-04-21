@@ -26,7 +26,7 @@ use log::trace;
 use rand::thread_rng;
 use safe_authenticator::{AuthResult, Authenticator};
 use safe_core::{config_handler, test_create_balance, Client};
-use safe_nd::{ClientFullId, Coins};
+use safe_nd::{ClientFullId, Money};
 use std::ffi::{CStr, OsStr};
 use std::os::raw::{c_char, c_void};
 use std::str::FromStr;
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn create_acc(
         let client_id = ClientFullId::new_bls(&mut thread_rng());
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         let authenticator =
@@ -326,7 +326,7 @@ mod tests {
             )))
         };
 
-        let orig_balance: Coins = unwrap!(run(unsafe { &*auth }, |client| {
+        let orig_balance: Money = unwrap!(run(unsafe { &*auth }, |client| {
             client.get_balance(None).map_err(AuthError::from)
         }));
 
@@ -338,7 +338,7 @@ mod tests {
                 .into()));
         }
 
-        let new_balance: Coins = unwrap!(run(unsafe { &*auth }, |client| {
+        let new_balance: Money = unwrap!(run(unsafe { &*auth }, |client| {
             client.get_balance(None).map_err(AuthError::from)
         }));
         assert_eq!(new_balance, unwrap!(orig_balance.checked_sub(COST_OF_PUT)));

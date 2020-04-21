@@ -490,7 +490,7 @@ fn restricted_access_and_deletion() {
                             .ins_auth_key(
                                 app_key,
                                 AppPermissions {
-                                    transfer_coins: true,
+                                    transfer_money: true,
                                     perform_mutations: true,
                                     get_balance: true,
                                 },

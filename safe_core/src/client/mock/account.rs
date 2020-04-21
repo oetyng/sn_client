@@ -7,7 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::config_handler::Config;
-use safe_nd::{AppPermissions, Coins, Error, PublicKey};
+use safe_nd::{AppPermissions, Money, Error, PublicKey};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 
@@ -17,12 +17,12 @@ pub const DEFAULT_MAX_CREDITS: usize = 100;
 #[derive(Deserialize, Serialize)]
 pub struct CoinBalance {
     owner: PublicKey,
-    value: Coins,
+    value: Money,
     credits: VecDeque<Credit>,
 }
 
 impl CoinBalance {
-    pub fn new(value: Coins, owner: PublicKey) -> Self {
+    pub fn new(value: Money, owner: PublicKey) -> Self {
         Self {
             owner,
             value,
@@ -30,7 +30,7 @@ impl CoinBalance {
         }
     }
 
-    pub fn credit_balance(&mut self, amount: Coins, transaction_id: u64) -> Result<(), Error> {
+    pub fn credit_balance(&mut self, amount: Money, transaction_id: u64) -> Result<(), Error> {
         if let Some(new_balance) = self.value.checked_add(amount) {
             self.value = new_balance;
             self.add_transaction(amount, transaction_id);
@@ -40,7 +40,7 @@ impl CoinBalance {
         }
     }
 
-    pub fn debit_balance(&mut self, amount: Coins) -> Result<(), Error> {
+    pub fn debit_balance(&mut self, amount: Money) -> Result<(), Error> {
         if let Some(new_balance) = self.value.checked_sub(amount) {
             self.value = new_balance;
             Ok(())
@@ -49,11 +49,11 @@ impl CoinBalance {
         }
     }
 
-    pub fn balance(&self) -> Coins {
+    pub fn balance(&self) -> Money {
         self.value
     }
 
-    fn add_transaction(&mut self, amount: Coins, transaction_id: u64) {
+    fn add_transaction(&mut self, amount: Money, transaction_id: u64) {
         if self.credits.len() == DEFAULT_MAX_CREDITS {
             let _ = self.credits.pop_back();
         }
@@ -67,7 +67,7 @@ impl CoinBalance {
 
 #[derive(Deserialize, Serialize)]
 pub struct Credit {
-    amount: Coins,
+    amount: Money,
     transaction_id: u64, // TODO: use Uuid
 }
 

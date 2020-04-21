@@ -13,7 +13,7 @@ use crate::test_utils::{create_app, create_app_by_req, create_random_auth_req};
 use crate::{run, AppError};
 use futures::Future;
 use safe_core::{Client, CoreError};
-use safe_nd::{AppPermissions, Coins, Error, XorName};
+use safe_nd::{AppPermissions, Money, Error, XorName};
 use std::str::FromStr;
 use unwrap::unwrap;
 
@@ -22,13 +22,13 @@ use unwrap::unwrap;
 // 1. Create a user account with the default coin balance.
 // 2. Create an app and authorise it _without_ giving a permissions to access the coin balance.
 // 3. Try to get the coin balance from the app. This request must fail.
-// 4. Try to transfer coins from balance A to some other random coin balance B. This request must fail.
+// 4. Try to transfer money from balance A to some other random coin balance B. This request must fail.
 // 5. Try to get an existing transaction from the app. This request must fail.
 #[test]
 fn coin_app_deny_permissions() {
     let mut app_auth_req = create_random_auth_req();
     app_auth_req.app_permissions = AppPermissions {
-        transfer_coins: false,
+        transfer_money: false,
         perform_mutations: false,
         get_balance: false,
     };
@@ -46,7 +46,7 @@ fn coin_app_deny_permissions() {
                     res => panic!("Unexpected result: {:?}", res),
                 }
 
-                c2.transfer_coins(None, rand::random(), unwrap!(Coins::from_str("1.0")), None)
+                c2.transfer_money(None, rand::random(), unwrap!(Money::from_str("1.0")), None)
             })
             .then(move |res| {
                 match res {
@@ -60,7 +60,7 @@ fn coin_app_deny_permissions() {
 
 // 1. Create a user account with the default coin balance.
 // 2. Create an app B and authorise it with a permission to access the coin balance.
-// 3. GetBalance, TransferBalance, and GetTransaction requests should succeed.
+// 3. GetBalance, TransferBalance, and GetTransactionId requests should succeed.
 #[test]
 fn coin_app_allow_permissions() {
     // Create a recipient app
@@ -71,10 +71,10 @@ fn coin_app_allow_permissions() {
         Ok(XorName::from(owner_key))
     }));
 
-    // Create an app that can access and transfer coins from the owner's coin balance.
+    // Create an app that can access and transfer money from the owner's coin balance.
     let mut app_auth_req = create_random_auth_req();
     app_auth_req.app_permissions = AppPermissions {
-        transfer_coins: true,
+        transfer_money: true,
         perform_mutations: false,
         get_balance: true,
     };
@@ -93,10 +93,10 @@ fn coin_app_allow_permissions() {
                     res => panic!("Unexpected result: {:?}", res),
                 }
 
-                c2.transfer_coins(
+                c2.transfer_money(
                     None,
                     coin_balance2,
-                    unwrap!(Coins::from_str("1.0")),
+                    unwrap!(Money::from_str("1.0")),
                     Some(1),
                 )
             })
@@ -104,7 +104,7 @@ fn coin_app_allow_permissions() {
                 match res {
                     Ok(transaction) => {
                         assert_eq!(transaction.id, 1);
-                        assert_eq!(transaction.amount, unwrap!(Coins::from_str("1.0")));
+                        assert_eq!(transaction.amount, unwrap!(Money::from_str("1.0")));
                     }
                     res => panic!("Unexpected result: {:?}", res),
                 }

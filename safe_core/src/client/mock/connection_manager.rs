@@ -17,7 +17,7 @@ use crate::{err, ok};
 use lazy_static::lazy_static;
 use log::trace;
 use quic_p2p::{self, Config as QuicP2pConfig};
-use safe_nd::{Coins, Message, PublicId, PublicKey, Request, RequestType, Response, XorName};
+use safe_nd::{Money, Message, PublicId, PublicKey, Request, RequestType, Response, XorName};
 use std::collections::HashSet;
 use std::env;
 use std::sync::{Arc, Mutex};
@@ -87,7 +87,7 @@ impl ConnectionManager {
             let writing = match msg {
                 Message::Request { request, .. } => {
                     let req_type = request.get_type();
-                    req_type == RequestType::Mutation || req_type == RequestType::Transaction
+                    req_type == RequestType::Mutation || req_type == RequestType::TransactionId
                 }
                 _ => false,
             };
@@ -127,18 +127,18 @@ impl ConnectionManager {
         ok!(())
     }
 
-    /// Add some coins to a wallet's PublicKey
-    pub fn allocate_test_coins(
+    /// Add some money to a wallet's PublicKey
+    pub fn allocate_test_money(
         &self,
         coin_balance_name: &XorName,
-        amount: Coins,
+        amount: Money,
     ) -> Result<(), safe_nd::Error> {
         let mut vault = vault::lock(&self.vault, true);
         vault.mock_increment_balance(coin_balance_name, amount)
     }
 
     /// Create coin balance in the mock network arbitrarily.
-    pub fn create_balance(&self, owner: PublicKey, amount: Coins) {
+    pub fn create_balance(&self, owner: PublicKey, amount: Money) {
         let mut vault = vault::lock(&self.vault, true);
         vault.mock_create_balance(owner, amount);
     }
@@ -210,11 +210,11 @@ pub fn clone_vault() -> Arc<Mutex<Vault>> {
     VAULT.clone()
 }
 
-pub fn unlimited_coins(config: &Config) -> bool {
+pub fn unlimited_money(config: &Config) -> bool {
     match env::var("SAFE_MOCK_UNLIMITED_COINS") {
         Ok(_) => true,
         Err(_) => match config.dev {
-            Some(ref dev) => dev.mock_unlimited_coins,
+            Some(ref dev) => dev.mock_unlimited_money,
             None => false,
         },
     }

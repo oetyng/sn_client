@@ -30,7 +30,7 @@ use safe_core::utils::test_utils::{gen_client_id, setup_client_with_net_obs};
 #[cfg(feature = "mock-network")]
 use safe_core::ConnectionManager;
 use safe_core::{utils, MDataInfo, NetworkEvent};
-use safe_nd::{AppPermissions, Coins, PublicKey, XorName};
+use safe_nd::{AppPermissions, Money, PublicKey, XorName};
 #[cfg(feature = "mock-network")]
 use safe_nd::{Error as SndError, Request, Response};
 use std::collections::HashMap;
@@ -89,7 +89,7 @@ pub fn create_authenticator() -> (Authenticator, String, String) {
 
     unwrap!(test_create_balance(
         &client_id,
-        unwrap!(Coins::from_str("100"))
+        unwrap!(Money::from_str("100"))
     ));
 
     let auth = unwrap!(Authenticator::create_acc(
@@ -220,7 +220,7 @@ pub fn register_rand_app(
         app: rand_app(),
         app_container,
         app_permissions: AppPermissions {
-            transfer_coins: true,
+            transfer_money: true,
             perform_mutations: true,
             get_balance: true,
         },
@@ -453,7 +453,7 @@ where
 
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         AuthClient::registered(

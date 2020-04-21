@@ -554,7 +554,7 @@ mod tests {
         calculate_new_balance, finish, gen_client_id, random_client, setup_client,
     };
     use safe_core::{utils, CoreError, DIR_TAG};
-    use safe_nd::{Coins, Error as SndError, MDataKind};
+    use safe_nd::{Money, Error as SndError, MDataKind};
     use std::str::FromStr;
     use tokio::runtime::current_thread::Runtime;
     use AuthMsgTx;
@@ -572,7 +572,7 @@ mod tests {
         let client_id = gen_client_id();
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         // Account creation for the 1st time - should succeed
@@ -602,7 +602,7 @@ mod tests {
 
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         setup_client(
@@ -667,7 +667,7 @@ mod tests {
 
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         setup_client(
@@ -703,7 +703,7 @@ mod tests {
 
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         let dir = unwrap!(MDataInfo::random_private(MDataKind::Seq, DIR_TAG));
@@ -740,7 +740,7 @@ mod tests {
 
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         let dir = unwrap!(MDataInfo::random_private(MDataKind::Seq, DIR_TAG));
@@ -871,12 +871,12 @@ mod tests {
         let client_pk = *client_full_id.public_id().public_key();
         let new_login_packet = unwrap!(LoginPacket::new(acc_loc, client_pk, acc_ciphertext, sig));
         let new_login_packet2 = new_login_packet.clone();
-        let five_coins = unwrap!(Coins::from_str("5"));
+        let five_money = unwrap!(Money::from_str("5"));
         let client_id = gen_client_id();
         let random_pk = *client_id.public_id().public_key();
 
-        // The `random_client()` initializes the client with 10 coins.
-        let start_bal = unwrap!(Coins::from_str("10"));
+        // The `random_client()` initializes the client with 10 money.
+        let start_bal = unwrap!(Money::from_str("10"));
         // Create a client which has a pre-loaded balance and use it to store the login packet on
         // the network.
         random_client(move |client| {
@@ -888,7 +888,7 @@ mod tests {
                 .insert_login_packet_for(
                     None,
                     maid_keys.public_key(),
-                    five_coins,
+                    five_money,
                     None,
                     new_login_packet.clone(),
                 )
@@ -901,7 +901,7 @@ mod tests {
                     c1.insert_login_packet_for(
                         None,
                         maid_keys.public_key(),
-                        unwrap!(Coins::from_str("3")),
+                        unwrap!(Money::from_str("3")),
                         None,
                         new_login_packet,
                     )
@@ -918,7 +918,7 @@ mod tests {
                     c3.insert_login_packet_for(
                         None,
                         random_pk,
-                        unwrap!(Coins::from_str("3")),
+                        unwrap!(Money::from_str("3")),
                         None,
                         new_login_packet2,
                     )
@@ -931,14 +931,14 @@ mod tests {
                 })
                 // The new balance should exist
                 .and_then(move |balance| {
-                    assert_eq!(balance, unwrap!(Coins::from_str("3")));
+                    assert_eq!(balance, unwrap!(Money::from_str("3")));
                     c2.get_balance(None)
                 })
                 .and_then(move |balance| {
                     let expected = calculate_new_balance(
                         start_bal,
                         Some(3),
-                        Some(unwrap!(Coins::from_str("8"))),
+                        Some(unwrap!(Money::from_str("8"))),
                     );
                     assert_eq!(balance, expected);
                     Ok(())
@@ -950,7 +950,7 @@ mod tests {
             |el_h, core_tx, net_tx| AuthClient::login(&sec_0, &sec_1, el_h, core_tx, net_tx),
             move |client| {
                 client.get_balance(None).and_then(move |balance| {
-                    assert_eq!(balance, five_coins);
+                    assert_eq!(balance, five_money);
                     ok!(())
                 })
             },

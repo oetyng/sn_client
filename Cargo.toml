@@ -8,3 +8,6 @@
 
 [workspace]
 members = ["safe_app", "safe_authenticator", "safe_authenticator_ffi", "safe_core", "tests"]
+
+[patch.crates-io]
+safe-nd =  { git = "https://github.com/oetyng/safe-nd.git", rev = "8b40c2357171" }

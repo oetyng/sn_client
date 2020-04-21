@@ -38,7 +38,7 @@ mod mock_routing {
     use safe_core::{
         app_container_name, test_create_balance, Client, ConnectionManager, CoreError,
     };
-    use safe_nd::{Coins, Error as SndError, Request, RequestType, Response};
+    use safe_nd::{Money, Error as SndError, Request, RequestType, Response};
     use std::str::FromStr;
     use unwrap::unwrap;
 
@@ -64,7 +64,7 @@ mod mock_routing {
 
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         {
@@ -182,7 +182,7 @@ mod mock_routing {
 
         unwrap!(test_create_balance(
             &client_id,
-            unwrap!(Coins::from_str("10"))
+            unwrap!(Money::from_str("10"))
         ));
 
         let cm_hook = move |mut cm: ConnectionManager| -> ConnectionManager {

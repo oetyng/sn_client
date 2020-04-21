@@ -8,7 +8,7 @@
 
 use super::DataId;
 use super::{Account, CoinBalance};
-use crate::client::mock::connection_manager::unlimited_coins;
+use crate::client::mock::connection_manager::unlimited_money;
 use crate::client::COST_OF_PUT;
 use crate::config_handler::{Config, DevConfig};
 use bincode::{deserialize, serialize};
@@ -16,9 +16,9 @@ use fs2::FileExt;
 use log::{debug, trace, warn};
 use safe_nd::{
     verify_signature, AData, ADataAction, ADataAddress, ADataIndex, AppPermissions, AppendOnlyData,
-    Coins, Data, Error as SndError, IData, IDataAddress, LoginPacket, MData, MDataAction,
+    Money, Data, Error as SndError, IData, IDataAddress, LoginPacket, MData, MDataAction,
     MDataAddress, MDataKind, Message, PublicId, PublicKey, Request, RequestType, Response,
-    Result as SndResult, SeqAppendOnly, Transaction, UnseqAppendOnly, XorName,
+    Result as SndResult, SeqAppendOnly, TransactionId, UnseqAppendOnly, XorName,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -153,7 +153,7 @@ fn check_perms_mdata(data: &MData, request: &Request, requester: PublicKey) -> S
 }
 
 enum Operation {
-    TransferCoins,
+    TransferMoney,
     Mutation,
     GetBalance,
 }
@@ -206,7 +206,7 @@ impl Vault {
         let _ = self
             .cache
             .login_packets
-            .insert(*login_packet.destination(), login_packet);
+            .insert(*login_packet.to(), login_packet);
     }
 
     pub fn get_login_packet(&self, name: &XorName) -> Option<&LoginPacket> {
@@ -214,7 +214,7 @@ impl Vault {
     }
 
     /// Instantly creates new balance.
-    pub fn mock_create_balance(&mut self, owner: PublicKey, amount: Coins) {
+    pub fn mock_create_balance(&mut self, owner: PublicKey, amount: Money) {
         let _ = self
             .cache
             .coin_balances
@@ -225,7 +225,7 @@ impl Vault {
     pub fn mock_increment_balance(
         &mut self,
         coin_balance_name: &XorName,
-        amount: Coins,
+        amount: Money,
     ) -> SndResult<()> {
         let balance = match self.get_coin_balance_mut(coin_balance_name) {
             Some(balance) => balance,
@@ -237,19 +237,19 @@ impl Vault {
         balance.credit_balance(amount, rand::random())
     }
 
-    fn get_balance(&self, coins_balance_id: &XorName) -> SndResult<Coins> {
-        self.get_coin_balance(&coins_balance_id).map_or_else(
+    fn get_balance(&self, money_balance_id: &XorName) -> SndResult<Money> {
+        self.get_coin_balance(&money_balance_id).map_or_else(
             || {
-                debug!("Coin balance {:?} not found", coins_balance_id);
+                debug!("Coin balance {:?} not found", money_balance_id);
                 Err(SndError::NoSuchBalance)
             },
             |bal| Ok(bal.balance()),
         )
     }
 
-    // Checks if the given balance has sufficient coins for the given `amount` of Operation.
-    fn has_sufficient_balance(&self, balance: Coins, amount: Coins) -> bool {
-        unlimited_coins(&self.config) || balance.checked_sub(amount).is_some()
+    // Checks if the given balance has sufficient money for the given `amount` of Operation.
+    fn has_sufficient_balance(&self, balance: Money, amount: Money) -> bool {
+        unlimited_money(&self.config) || balance.checked_sub(amount).is_some()
     }
 
     // Authorises coin transfers, mutations and get balance operations.
@@ -287,9 +287,9 @@ impl Vault {
         // Will fail to authorise any even if one of the requested operations had been denied.
         for operation in operations {
             match operation {
-                Operation::TransferCoins => {
-                    if !perms.transfer_coins {
-                        debug!("Transfer coins not authorised");
+                Operation::TransferMoney => {
+                    if !perms.transfer_money {
+                        debug!("Transfer money not authorised");
                         return Err(SndError::AccessDenied);
                     }
                 }
@@ -315,7 +315,7 @@ impl Vault {
 
     // Commit a mutation.
     pub fn commit_mutation(&mut self, account: &XorName) {
-        if !unlimited_coins(&self.config) {
+        if !unlimited_money(&self.config) {
             let balance = unwrap!(self.get_coin_balance_mut(account));
             // Cannot fail - Balance is checked before
             unwrap!(balance.debit_balance(COST_OF_PUT));
@@ -342,25 +342,25 @@ impl Vault {
         let _ = self.cache.nae_manager.remove(&name);
     }
 
-    fn create_balance(&mut self, destination: XorName, owner: PublicKey) -> SndResult<()> {
-        if self.get_coin_balance(&destination).is_some() {
+    fn create_balance(&mut self, to: XorName, owner: PublicKey) -> SndResult<()> {
+        if self.get_coin_balance(&to).is_some() {
             return Err(SndError::BalanceExists);
         }
         let _ = self
             .cache
             .coin_balances
-            .insert(destination, CoinBalance::new(Coins::from_nano(0), owner));
+            .insert(to, CoinBalance::new(Money::from_nano(0), owner));
         Ok(())
     }
 
-    fn transfer_coins(
+    fn transfer_money(
         &mut self,
         source: XorName,
-        destination: XorName,
-        amount: Coins,
+        to: XorName,
+        amount: Money,
         transaction_id: u64,
-    ) -> SndResult<Transaction> {
-        let unlimited = unlimited_coins(&self.config);
+    ) -> SndResult<TransactionId> {
+        let unlimited = unlimited_money(&self.config);
         match self.get_coin_balance_mut(&source) {
             Some(balance) => {
                 if !unlimited {
@@ -369,11 +369,11 @@ impl Vault {
             }
             None => return Err(SndError::NoSuchBalance),
         };
-        match self.get_coin_balance_mut(&destination) {
+        match self.get_coin_balance_mut(&to) {
             Some(balance) => balance.credit_balance(amount, transaction_id)?,
             None => return Err(SndError::NoSuchBalance),
         };
-        Ok(Transaction {
+        Ok(TransactionId {
             id: transaction_id,
             amount,
         })
@@ -406,7 +406,7 @@ impl Vault {
             let request_type = request.get_type();
 
             match request_type {
-                RequestType::PrivateGet | RequestType::Mutation | RequestType::Transaction => {
+                RequestType::PrivateGet | RequestType::Mutation | RequestType::TransactionId => {
                     // For apps, check if its public key is listed as an auth key.
                     if is_app {
                         let auth_keys = self
@@ -515,9 +515,9 @@ impl Vault {
                 };
                 Response::Mutation(result)
             }
-            // ===== Coins =====
-            Request::TransferCoins {
-                destination,
+            // ===== Money =====
+            Request::TransferMoney {
+                to,
                 amount,
                 transaction_id,
             } => {
@@ -526,12 +526,12 @@ impl Vault {
                 let result = if amount.as_nano() == 0 {
                     Err(SndError::InvalidOperation)
                 } else {
-                    self.authorise_operations(&[Operation::TransferCoins], source, requester_pk)
+                    self.authorise_operations(&[Operation::TransferMoney], source, requester_pk)
                         .and_then(|()| {
-                            self.transfer_coins(source, destination, amount, transaction_id)
+                            self.transfer_money(source, to, amount, transaction_id)
                         })
                 };
-                Response::Transaction(result)
+                Response::MoneyReceipt(result)
             }
             Request::CreateBalance {
                 amount,
@@ -539,18 +539,18 @@ impl Vault {
                 transaction_id,
             } => {
                 let source = owner_pk.into();
-                let destination = new_balance_owner.into();
+                let to = new_balance_owner.into();
 
-                let result = if source == destination {
+                let result = if source == to {
                     self.mock_create_balance(new_balance_owner, amount);
-                    Ok(Transaction {
+                    Ok(TransactionId {
                         id: transaction_id,
                         amount,
                     })
                 } else {
                     let mut req_perms = vec![Operation::Mutation];
-                    if amount == unwrap!(Coins::from_str("0")) {
-                        req_perms.push(Operation::TransferCoins);
+                    if amount == unwrap!(Money::from_str("0")) {
+                        req_perms.push(Operation::TransferMoney);
                     }
                     self.authorise_operations(req_perms.as_slice(), source, requester_pk)
                         .and_then(|_| self.get_balance(&source))
@@ -561,14 +561,14 @@ impl Vault {
                             if !self.has_sufficient_balance(source_balance, total_amount) {
                                 return Err(SndError::InsufficientBalance);
                             }
-                            self.create_balance(destination, new_balance_owner)
+                            self.create_balance(to, new_balance_owner)
                         })
                         .and_then(|()| {
                             self.commit_mutation(&source);
-                            self.transfer_coins(source, destination, amount, transaction_id)
+                            self.transfer_money(source, to, amount, transaction_id)
                         })
                 };
-                Response::Transaction(result)
+                Response::MoneyReceipt(result)
             }
             Request::GetBalance => {
                 let coin_balance_id = owner_pk.into();
@@ -588,12 +588,12 @@ impl Vault {
                 let source = owner_pk.into();
                 let new_balance_dest = new_owner.into();
 
-                // If a login packet at the given destination exists return an error.
+                // If a login packet at the given to exists return an error.
                 let result = if let Err(e) = {
                     // Check if the requester is authorized to perform coin transactions, mutate, and read balance.
                     let mut req_perms = vec![Operation::Mutation];
-                    if amount == unwrap!(Coins::from_str("0")) {
-                        req_perms.push(Operation::TransferCoins);
+                    if amount == unwrap!(Money::from_str("0")) {
+                        req_perms.push(Operation::TransferMoney);
                     }
                     self.authorise_operations(req_perms.as_slice(), source, requester_pk)
                 } {
@@ -608,17 +608,17 @@ impl Vault {
                                 return Err(SndError::InsufficientBalance);
                             }
 
-                            // Create the balance and transfer the mentioned amount of coins
+                            // Create the balance and transfer the mentioned amount of money
                             self.create_balance(new_balance_dest, new_owner)
                         })
                         .and_then(|_| {
                             // Debit the requester's wallet the cost of `CreateLoginPacketFor`
                             self.commit_mutation(&source);
-                            self.transfer_coins(source, new_balance_dest, amount, transaction_id)
+                            self.transfer_money(source, new_balance_dest, amount, transaction_id)
                         })
                         .and_then(|_| {
                             if self
-                                .get_login_packet(new_login_packet.destination())
+                                .get_login_packet(new_login_packet.to())
                                 .is_some()
                             {
                                 Err(SndError::LoginPacketExists)
@@ -630,13 +630,13 @@ impl Vault {
                         .map(|_| {
                             self.insert_login_packet(new_login_packet);
 
-                            Transaction {
+                            TransactionId {
                                 id: transaction_id,
                                 amount,
                             }
                         })
                 };
-                Response::Transaction(result)
+                Response::MoneyReceipt(result)
             }
             Request::CreateLoginPacket(account_data) => {
                 let source = owner_pk.into();
@@ -645,7 +645,7 @@ impl Vault {
                     self.authorise_operations(&[Operation::Mutation], source, requester_pk)
                 {
                     Response::Mutation(Err(e))
-                } else if self.get_login_packet(account_data.destination()).is_some() {
+                } else if self.get_login_packet(account_data.to()).is_some() {
                     Response::Mutation(Err(SndError::LoginPacketExists))
                 } else {
                     let result = self
@@ -679,7 +679,7 @@ impl Vault {
             }
             Request::UpdateLoginPacket(new_packet) => {
                 let result = {
-                    match self.get_login_packet(new_packet.destination()) {
+                    match self.get_login_packet(new_packet.to()) {
                         Some(old_packet) => {
                             if *old_packet.authorised_getter() == requester_pk {
                                 self.insert_login_packet(new_packet);
