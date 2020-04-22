@@ -47,6 +47,7 @@ use safe_nd::{
     AData, ADataAddress, ADataAppendOperation, ADataEntries, ADataEntry, ADataIndex, ADataIndices,
     ADataOwner, ADataPermissions, ADataPubPermissionSet, ADataPubPermissions,
     ADataUnpubPermissionSet, ADataUnpubPermissions, ADataUser, AppPermissions, ClientFullId, Money,
+    MoneyReceipt,
     IData, IDataAddress, LoginPacket, MData, MDataAddress, MDataEntries, MDataEntryActions,
     MDataPermissionSet, MDataSeqEntries, MDataSeqEntryActions, MDataSeqValue,
     MDataUnseqEntryActions, MDataValue, MDataValues, Message, MessageId, PublicId, PublicKey,
@@ -103,7 +104,7 @@ macro_rules! send_as {
                 match res {
                     Response::MoneyReceipt(result) => {
                         match result {
-                            Ok(response) => Ok(response.id),
+                            Ok(response) => Ok(response),
                             Err(err) => Err(CoreError::from(err) )
                         }
                     },
@@ -253,7 +254,7 @@ pub trait Client: Clone + 'static {
         to: XorName,
         amount: Money,
         transaction_id: Option<u64>,
-    ) -> Box<CoreFuture<TransactionId>> {
+    ) -> Box<CoreFuture<MoneyReceipt>> {
         trace!("Transfer {} money to {:?}", amount, to);
         // let from = *client_id.public_id().name();
         let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().name() );
@@ -278,7 +279,7 @@ pub trait Client: Clone + 'static {
         to: XorName,
         amount: Money,
         transaction_id: Option<u64>,
-    ) -> Box<CoreFuture<TransactionId>> {
+    ) -> Box<CoreFuture<MoneyReceipt>> {
         trace!(
             "Create a new balance for {:?} with {} money.",
             to,
@@ -308,7 +309,7 @@ pub trait Client: Clone + 'static {
         amount: Money,
         transaction_id: Option<u64>,
         new_login_packet: LoginPacket,
-    ) -> Box<CoreFuture<TransactionId>> {
+    ) -> Box<CoreFuture<MoneyReceipt>> {
         trace!(
             "Insert a login packet for {:?} preloading the wallet with {} money.",
             new_owner,
@@ -1117,7 +1118,7 @@ pub trait Client: Clone + 'static {
         &self,
         client_id: Option<&ClientFullId>,
         amount: Money,
-    ) -> Box<CoreFuture<TransactionId>> {
+    ) -> Box<CoreFuture<MoneyReceipt>> {
         let our_id = self.public_id();
         let to = client_id.map_or_else(
             || our_id.name(),

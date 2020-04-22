@@ -359,7 +359,7 @@ impl Vault {
         to: XorName,
         amount: Money,
         transaction_id: u64,
-    ) -> SndResult<TransactionId> {
+    ) -> SndResult<MoneyReceipt> {
         let unlimited = unlimited_money(&self.config);
         match self.get_coin_balance_mut(&source) {
             Some(balance) => {
@@ -373,7 +373,7 @@ impl Vault {
             Some(balance) => balance.credit_balance(amount, transaction_id)?,
             None => return Err(SndError::NoSuchBalance),
         };
-        Ok(TransactionId {
+        Ok(MoneyReceipt {
             id: transaction_id,
             amount,
         })
