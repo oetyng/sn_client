@@ -118,7 +118,7 @@ fn immutable_data_basics() {
     send_req_expect_ok!(
         &mut connection_manager,
         &client_safe_key,
-        Request::GetBalance,
+        Request::GetBalance(*client_safe_key.public_id().name()),
         balance
     );
 
@@ -138,7 +138,7 @@ fn immutable_data_basics() {
     send_req_expect_ok!(
         &mut connection_manager,
         &client_safe_key,
-        Request::GetBalance,
+        Request::GetBalance(*client_safe_key.public_id().name()),
         balance
     );
 }
@@ -1311,7 +1311,7 @@ fn low_balance_check() {
         let rpc_response = process_request(
             &mut connection_manager,
             &client_safe_key,
-            Request::GetBalance,
+            Request::GetBalance(*client_safe_key.public_id().name()),
         );
         let balance: Money = match rpc_response {
             Response::GetBalance(res) => unwrap!(res),
@@ -1319,12 +1319,15 @@ fn low_balance_check() {
         };
 
         // Exhaust the account balance by transferring everything to a new wallet
-        let new_balance_owner: PublicKey = SecretKey::random().public_key().into();
+        let to = PublicKey::from(SecretKey::random().public_key() );
+
+        
         let response = process_request(
             &mut connection_manager,
             &client_safe_key,
             Request::CreateBalance {
-                new_balance_owner,
+                to,
+                from: client_safe_key.public_id().public_key(),
                 amount: unwrap!(balance.checked_sub(COST_OF_PUT)),
                 transaction_id: rand::random(),
             },

@@ -17,7 +17,7 @@ use log::{debug, trace, warn};
 use safe_nd::{
     verify_signature, AData, ADataAction, ADataAddress, ADataIndex, AppPermissions, AppendOnlyData,
     Money, Data, Error as SndError, IData, IDataAddress, LoginPacket, MData, MDataAction,
-    MDataAddress, MDataKind, Message, PublicId, PublicKey, Request, RequestType, Response,
+    MDataAddress, MDataKind, Message, MoneyReceipt, PublicId, PublicKey, Request, RequestType, Response,
     Result as SndResult, SeqAppendOnly, TransactionId, UnseqAppendOnly, XorName,
 };
 use serde::{Deserialize, Serialize};
@@ -206,7 +206,7 @@ impl Vault {
         let _ = self
             .cache
             .login_packets
-            .insert(*login_packet.to(), login_packet);
+            .insert(*login_packet.destination(), login_packet);
     }
 
     pub fn get_login_packet(&self, name: &XorName) -> Option<&LoginPacket> {
@@ -214,11 +214,11 @@ impl Vault {
     }
 
     /// Instantly creates new balance.
-    pub fn mock_create_balance(&mut self, owner: PublicKey, amount: Money) {
+    pub fn mock_create_balance(&mut self, owner: PublicKey, amount: Money) {        
         let _ = self
             .cache
             .coin_balances
-            .insert(owner.into(), CoinBalance::new(amount, owner));
+            .insert(XorName::from(owner), CoinBalance::new(amount, owner));
     }
 
     /// Increment coin balance for testing
@@ -406,7 +406,7 @@ impl Vault {
             let request_type = request.get_type();
 
             match request_type {
-                RequestType::PrivateGet | RequestType::Mutation | RequestType::TransactionId => {
+                RequestType::PrivateGet | RequestType::Mutation | RequestType::Transaction => {
                     // For apps, check if its public key is listed as an auth key.
                     if is_app {
                         let auth_keys = self
@@ -518,6 +518,7 @@ impl Vault {
             // ===== Money =====
             Request::TransferMoney {
                 to,
+                from, 
                 amount,
                 transaction_id,
             } => {
@@ -535,16 +536,20 @@ impl Vault {
             }
             Request::CreateBalance {
                 amount,
-                new_balance_owner,
+                to,
+                from,
                 transaction_id,
             } => {
                 let source = owner_pk.into();
-                let to = new_balance_owner.into();
+                let recipient = to.into();
 
-                let result = if source == to {
-                    self.mock_create_balance(new_balance_owner, amount);
-                    Ok(TransactionId {
-                        id: transaction_id,
+                let result = if source == recipient {
+                    let real_or_random_transaction_id : u64 = transaction_id.unwrap_or(rand::random());
+                    // creating a mock balance, source is recipient so we just 
+                    // use that pk
+                    self.mock_create_balance(owner_pk, amount);
+                    Ok(MoneyReceipt {
+                        id: real_or_random_transaction_id, 
                         amount,
                     })
                 } else {
@@ -561,16 +566,17 @@ impl Vault {
                             if !self.has_sufficient_balance(source_balance, total_amount) {
                                 return Err(SndError::InsufficientBalance);
                             }
-                            self.create_balance(to, new_balance_owner)
+                            self.create_balance(recipient, to)
                         })
                         .and_then(|()| {
                             self.commit_mutation(&source);
-                            self.transfer_money(source, to, amount, transaction_id)
+                            self.transfer_money(source, recipient, amount, transaction_id.unwrap_or(rand::random()))
                         })
                 };
                 Response::MoneyReceipt(result)
             }
-            Request::GetBalance => {
+            Request::GetBalance(xorname) => {
+                // todo deal with xorname
                 let coin_balance_id = owner_pk.into();
 
                 let result = self
@@ -618,7 +624,7 @@ impl Vault {
                         })
                         .and_then(|_| {
                             if self
-                                .get_login_packet(new_login_packet.to())
+                                .get_login_packet(new_login_packet.destination())
                                 .is_some()
                             {
                                 Err(SndError::LoginPacketExists)
@@ -630,7 +636,7 @@ impl Vault {
                         .map(|_| {
                             self.insert_login_packet(new_login_packet);
 
-                            TransactionId {
+                            MoneyReceipt {
                                 id: transaction_id,
                                 amount,
                             }
@@ -645,7 +651,7 @@ impl Vault {
                     self.authorise_operations(&[Operation::Mutation], source, requester_pk)
                 {
                     Response::Mutation(Err(e))
-                } else if self.get_login_packet(account_data.to()).is_some() {
+                } else if self.get_login_packet(account_data.destination()).is_some() {
                     Response::Mutation(Err(SndError::LoginPacketExists))
                 } else {
                     let result = self
@@ -679,7 +685,7 @@ impl Vault {
             }
             Request::UpdateLoginPacket(new_packet) => {
                 let result = {
-                    match self.get_login_packet(new_packet.to()) {
+                    match self.get_login_packet(new_packet.destination()) {
                         Some(old_packet) => {
                             if *old_packet.authorised_getter() == requester_pk {
                                 self.insert_login_packet(new_packet);

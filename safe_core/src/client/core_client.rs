@@ -98,8 +98,8 @@ impl CoreClient {
         let new_login_packet = LoginPacket::new(acc_loc, client_pk, acc_ciphertext, sig)?;
 
         let balance_client_id = maid_keys.client_id.clone();
-        let to = *balance_client_id.public_id().name();
-        let from = *client_full_id.public_id().name();
+        let to = *balance_client_id.public_id().public_key();
+        let from = client_full_id.public_id().public_key();
 
         let balance_client_id = SafeKey::client(balance_client_id);
         let balance_pub_id = balance_client_id.public_id();

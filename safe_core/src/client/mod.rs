@@ -15,6 +15,7 @@ pub mod core_client;
 pub mod mdata_info;
 /// Various APIs wrapped to provide resiliance for common network operations.
 pub mod recoverable_apis;
+use rand;
 
 mod id;
 #[cfg(feature = "mock-network")]
@@ -47,17 +48,17 @@ use safe_nd::{
     AData, ADataAddress, ADataAppendOperation, ADataEntries, ADataEntry, ADataIndex, ADataIndices,
     ADataOwner, ADataPermissions, ADataPubPermissionSet, ADataPubPermissions,
     ADataUnpubPermissionSet, ADataUnpubPermissions, ADataUser, AppPermissions, ClientFullId, Money,
-    MoneyReceipt,
+    MoneyReceipt, 
     IData, IDataAddress, LoginPacket, MData, MDataAddress, MDataEntries, MDataEntryActions,
     MDataPermissionSet, MDataSeqEntries, MDataSeqEntryActions, MDataSeqValue,
     MDataUnseqEntryActions, MDataValue, MDataValues, Message, MessageId, PublicId, PublicKey,
-    Request, RequestType, Response, SeqMutableData, TransactionId, UnseqMutableData, XorName,
+    Request, RequestType, Response, SeqMutableData, UnseqMutableData, XorName,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::time::Duration;
-use threshold_crypto;
+use threshold_crypto::SecretKey;
 use tokio::runtime::current_thread::{block_on_all, Handle};
 use unwrap::unwrap;
 
@@ -256,9 +257,11 @@ pub trait Client: Clone + 'static {
         transaction_id: Option<u64>,
     ) -> Box<CoreFuture<MoneyReceipt>> {
         trace!("Transfer {} money to {:?}", amount, to);
-        // let from = *client_id.public_id().name();
-        let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().name() );
 
+        let from = client_id.clone().map_or_else( || {
+            //generate a random xorname for use when nothign is provided (--test-coins)
+            XorName(rand::random())
+        }, |id| *id.public_id().name() );
         send_as!(
             self,
             Request::TransferMoney {
@@ -276,7 +279,7 @@ pub trait Client: Clone + 'static {
     fn create_balance(
         &self,
         client_id: Option<&ClientFullId>,
-        to: XorName,
+        to: PublicKey,
         amount: Money,
         transaction_id: Option<u64>,
     ) -> Box<CoreFuture<MoneyReceipt>> {
@@ -285,8 +288,11 @@ pub trait Client: Clone + 'static {
             to,
             amount
         );
-        // let from = *client_id.public_id().name();
-        let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().name() );
+
+        let from = client_id.clone().map_or_else( || {
+            //generate a random PK for use when nothign is provided (--test-coins)
+            PublicKey::from(SecretKey::random().public_key() )
+        }, |id| *id.public_id().public_key() );
 
         send_as!(
             self,
@@ -305,7 +311,7 @@ pub trait Client: Clone + 'static {
     fn insert_login_packet_for(
         &self,
         client_id: Option<&ClientFullId>,
-        new_owner: XorName,
+        new_owner: PublicKey,
         amount: Money,
         transaction_id: Option<u64>,
         new_login_packet: LoginPacket,
@@ -1121,8 +1127,8 @@ pub trait Client: Clone + 'static {
     ) -> Box<CoreFuture<MoneyReceipt>> {
         let our_id = self.public_id();
         let to = client_id.map_or_else(
-            || our_id.name(),
-            |client_id| client_id.public_id().name(),
+            || our_id.public_key(),
+            |client_id| *client_id.public_id().public_key(),
         );
 
         trace!(
@@ -1130,12 +1136,16 @@ pub trait Client: Clone + 'static {
             to,
             amount,
         );
-        let from = client_id.clone().map_or_else( || to.clone(), |id| *id.public_id().name() );
+
+        let from = client_id.clone().map_or_else( || {
+            //generate a random PK for use when nothign is provided (--test-coins)
+            PublicKey::from(SecretKey::random().public_key() )
+        }, |id| *id.public_id().public_key() );
 
         send_as!(
             self,
             Request::CreateBalance {
-                to: *to,
+                to,
                 from,
                 amount,
                 transaction_id: rand::random(),
@@ -1171,10 +1181,11 @@ pub fn test_create_balance(owner: &ClientFullId, amount: Money) -> Result<(), Co
     temp_client(owner, move |mut cm, full_id| {
         // Create the balance for the client
         let to = match full_id.public_id() {
-            PublicId::Client(id) => *id.name(),
+            PublicId::Client(id) => *id.public_key(),
             x => return Err(CoreError::from(format!("Unexpected ID type {:?}", x))),
         };
-        let from = *owner.public_id().name();
+
+        let from = PublicKey::from(SecretKey::random().public_key());
 
         let response = req(
             &mut cm,
@@ -1209,10 +1220,10 @@ pub fn wallet_get_balance(wallet_sk: &ClientFullId) -> Result<Money, CoreError> 
 /// Creates a new coin balance on the network.
 pub fn wallet_create_balance(
     client_id: &ClientFullId,
-    to: XorName,
+    to: PublicKey,
     amount: Money,
     transaction_id: Option<u64>,
-) -> Result<TransactionId, CoreError> {
+) -> Result<MoneyReceipt, CoreError> {
     trace!(
         "Create a new coin balance for {:?} with {} money.",
         to,
@@ -1220,7 +1231,7 @@ pub fn wallet_create_balance(
     );
 
     let transaction_id = transaction_id.unwrap_or_else(rand::random);
-    let from = *client_id.public_id().name();
+    let from = *client_id.public_id().public_key();
 
 
     temp_client(client_id, move |mut cm, full_id| {
@@ -1237,7 +1248,7 @@ pub fn wallet_create_balance(
         match response {
             Response::MoneyReceipt(res) => {
                 match res {
-                    Ok(response) => Ok(response.id),
+                    Ok(response) => Ok(response),
                     Err(err) => Err(CoreError::from(err) )
                 }
             },
@@ -1252,7 +1263,7 @@ pub fn wallet_transfer_money(
     to: XorName,
     amount: Money,
     transaction_id: Option<u64>,
-) -> Result<TransactionId, CoreError> {
+) -> Result<MoneyReceipt, CoreError> {
     trace!("Transfer {} money to {:?}", amount, to);
 
     let transaction_id = transaction_id.unwrap_or_else(rand::random);
@@ -1273,7 +1284,7 @@ pub fn wallet_transfer_money(
         match response {
             Response::MoneyReceipt(res) => {
                 match res {
-                    Ok(response) => Ok(response.id),
+                    Ok(response) => Ok(response),
                     Err(err) => Err(CoreError::from(err) )
                 }
             },
@@ -1899,7 +1910,7 @@ mod tests {
             let init_bal = unwrap!(Money::from_str("500.0"));
 
             let client_id = gen_client_id();
-            let bls_pk = *client_id.public_id().name();
+            let bls_pk = *client_id.public_id().public_key();
 
             client
                 .test_set_balance(None, init_bal)
@@ -1938,6 +1949,7 @@ mod tests {
                 .and_then(move |_| {
                     let random_pk = gen_bls_keypair().public_key();
                     let random_source = gen_client_id();
+
 
                     client5
                         .create_balance(
@@ -2863,7 +2875,7 @@ mod tests {
         assert_eq!(balance, unwrap!(Money::from_str("50")));
 
         let new_client_id = gen_client_id();
-        let new_client_pk = new_client_id.public_id().name();
+        let new_client_pk = new_client_id.public_id().public_key();
         let new_wallet: XorName = *new_client_id.public_id().name();
         let txn = unwrap!(wallet_create_balance(
             &client_id,

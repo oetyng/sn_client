@@ -869,11 +869,12 @@ mod tests {
 
         let sig = client_full_id.sign(&acc_ciphertext);
         let client_pk = *client_full_id.public_id().public_key();
+        let client_xorname = *client_full_id.public_id().name();
         let new_login_packet = unwrap!(LoginPacket::new(acc_loc, client_pk, acc_ciphertext, sig));
         let new_login_packet2 = new_login_packet.clone();
         let five_money = unwrap!(Money::from_str("5"));
         let client_id = gen_client_id();
-        let random_pk = *client_id.public_id().public_key();
+        let random_xor = *client_id.public_id().name();
 
         // The `random_client()` initializes the client with 10 money.
         let start_bal = unwrap!(Money::from_str("10"));
@@ -887,7 +888,7 @@ mod tests {
             client
                 .insert_login_packet_for(
                     None,
-                    maid_keys.public_key(),
+                    client_xorname,
                     five_money,
                     None,
                     new_login_packet.clone(),
@@ -900,7 +901,7 @@ mod tests {
                 .and_then(move |_| {
                     c1.insert_login_packet_for(
                         None,
-                        maid_keys.public_key(),
+                        client_xorname,
                         unwrap!(Money::from_str("3")),
                         None,
                         new_login_packet,
@@ -917,7 +918,7 @@ mod tests {
                 .and_then(move |_| {
                     c3.insert_login_packet_for(
                         None,
-                        random_pk,
+                        random_xor,
                         unwrap!(Money::from_str("3")),
                         None,
                         new_login_packet2,
