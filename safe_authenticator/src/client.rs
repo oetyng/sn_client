@@ -554,7 +554,7 @@ mod tests {
         calculate_new_balance, finish, gen_client_id, random_client, setup_client,
     };
     use safe_core::{utils, CoreError, DIR_TAG};
-    use safe_nd::{Money, Error as SndError, MDataKind};
+    use safe_nd::{Error as SndError, MDataKind, Money};
     use std::str::FromStr;
     use tokio::runtime::current_thread::Runtime;
     use AuthMsgTx;

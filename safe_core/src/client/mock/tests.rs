@@ -23,10 +23,10 @@ use futures::sync::mpsc::{self, UnboundedReceiver};
 use futures::Future;
 use rand::thread_rng;
 use safe_nd::{
-    ADataPubPermissionSet, AppFullId, AppPermissions, ClientFullId, Money, Error, IData, MData,
+    ADataPubPermissionSet, AppFullId, AppPermissions, ClientFullId, Error, IData, MData,
     MDataAction, MDataAddress, MDataEntries, MDataEntryActions, MDataPermissionSet,
     MDataSeqEntryAction, MDataSeqEntryActions, MDataSeqValue, MDataValue, MDataValues, Message,
-    MessageId, PubImmutableData, PublicId, PublicKey, Request, RequestType, Response,
+    MessageId, Money, PubImmutableData, PublicId, PublicKey, Request, RequestType, Response,
     SeqMutableData, UnpubImmutableData, UnseqMutableData, XorName,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -1319,9 +1319,8 @@ fn low_balance_check() {
         };
 
         // Exhaust the account balance by transferring everything to a new wallet
-        let to = PublicKey::from(SecretKey::random().public_key() );
+        let to = PublicKey::from(SecretKey::random().public_key());
 
-        
         let response = process_request(
             &mut connection_manager,
             &client_safe_key,

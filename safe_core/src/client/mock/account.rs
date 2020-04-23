@@ -7,7 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::config_handler::Config;
-use safe_nd::{AppPermissions, Money, Error, PublicKey};
+use safe_nd::{AppPermissions, Error, Money, PublicKey};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 

@@ -27,7 +27,7 @@ use safe_core::utils::test_utils::random_client;
 use safe_core::ConnectionManager;
 use safe_core::{client::COST_OF_PUT, Client, CoreError};
 use safe_nd::{
-    ADataAddress, ADataOwner, AppPermissions, AppendOnlyData, Money, Error as SndError,
+    ADataAddress, ADataOwner, AppPermissions, AppendOnlyData, Error as SndError, Money,
     PubImmutableData, PubSeqAppendOnlyData, PubUnseqAppendOnlyData, UnpubUnseqAppendOnlyData,
     XorName,
 };

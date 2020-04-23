@@ -38,7 +38,7 @@ mod mock_routing {
     use safe_core::{
         app_container_name, test_create_balance, Client, ConnectionManager, CoreError,
     };
-    use safe_nd::{Money, Error as SndError, Request, RequestType, Response};
+    use safe_nd::{Error as SndError, Money, Request, RequestType, Response};
     use std::str::FromStr;
     use unwrap::unwrap;
 

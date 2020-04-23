@@ -47,12 +47,11 @@ use quic_p2p::Config as QuicP2pConfig;
 use safe_nd::{
     AData, ADataAddress, ADataAppendOperation, ADataEntries, ADataEntry, ADataIndex, ADataIndices,
     ADataOwner, ADataPermissions, ADataPubPermissionSet, ADataPubPermissions,
-    ADataUnpubPermissionSet, ADataUnpubPermissions, ADataUser, AppPermissions, ClientFullId, Money,
-    MoneyReceipt, 
-    IData, IDataAddress, LoginPacket, MData, MDataAddress, MDataEntries, MDataEntryActions,
+    ADataUnpubPermissionSet, ADataUnpubPermissions, ADataUser, AppPermissions, ClientFullId, IData,
+    IDataAddress, LoginPacket, MData, MDataAddress, MDataEntries, MDataEntryActions,
     MDataPermissionSet, MDataSeqEntries, MDataSeqEntryActions, MDataSeqValue,
-    MDataUnseqEntryActions, MDataValue, MDataValues, Message, MessageId, PublicId, PublicKey,
-    Request, RequestType, Response, SeqMutableData, UnseqMutableData, XorName,
+    MDataUnseqEntryActions, MDataValue, MDataValues, Message, MessageId, Money, MoneyReceipt,
+    PublicId, PublicKey, Request, RequestType, Response, SeqMutableData, UnseqMutableData, XorName,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -101,34 +100,26 @@ fn send_mutation(client: &impl Client, req: Request) -> Box<CoreFuture<()>> {
 macro_rules! send_as {
     ($client:expr, $request:expr, $response:path, $secret_key:expr) => {
         send_as_helper($client, $request, $secret_key)
-            .and_then(|res| 
-                match res {
-                    Response::MoneyReceipt(result) => {
-                        match result {
-                            Ok(response) => Ok(response),
-                            Err(err) => Err(CoreError::from(err) )
-                        }
-                    },
-                    _ => Err(CoreError::from("Unexpected response")),
-                }
-        )
+            .and_then(|res| match res {
+                Response::MoneyReceipt(result) => match result {
+                    Ok(response) => Ok(response),
+                    Err(err) => Err(CoreError::from(err)),
+                },
+                _ => Err(CoreError::from("Unexpected response")),
+            })
             .into_box()
     };
 }
 macro_rules! send_as_and_get_money {
     ($client:expr, $request:expr, $response:path, $secret_key:expr) => {
         send_as_helper($client, $request, $secret_key)
-            .and_then(|res| 
-                match res {
-                    Response::MoneyReceipt(result) => {
-                        match result {
-                            Ok(response) => Ok(response.amount),
-                            Err(err) => Err(CoreError::from(err) )
-                        }
-                    },
-                    _ => Err(CoreError::from("Unexpected response")),
-                }
-        )
+            .and_then(|res| match res {
+                Response::MoneyReceipt(result) => match result {
+                    Ok(response) => Ok(response.amount),
+                    Err(err) => Err(CoreError::from(err)),
+                },
+                _ => Err(CoreError::from("Unexpected response")),
+            })
             .into_box()
     };
 }
@@ -258,14 +249,17 @@ pub trait Client: Clone + 'static {
     ) -> Box<CoreFuture<MoneyReceipt>> {
         trace!("Transfer {} money to {:?}", amount, to);
 
-        let from = client_id.clone().map_or_else( || {
-            //generate a random xorname for use when nothign is provided (--test-coins)
-            XorName(rand::random())
-        }, |id| *id.public_id().name() );
+        let from = client_id.clone().map_or_else(
+            || {
+                //generate a random xorname for use when nothign is provided (--test-coins)
+                XorName(rand::random())
+            },
+            |id| *id.public_id().name(),
+        );
         send_as!(
             self,
             Request::TransferMoney {
-                from, 
+                from,
                 to,
                 amount,
                 transaction_id: transaction_id.unwrap_or_else(rand::random),
@@ -283,24 +277,23 @@ pub trait Client: Clone + 'static {
         amount: Money,
         transaction_id: Option<u64>,
     ) -> Box<CoreFuture<MoneyReceipt>> {
-        trace!(
-            "Create a new balance for {:?} with {} money.",
-            to,
-            amount
-        );
+        trace!("Create a new balance for {:?} with {} money.", to, amount);
 
-        let from = client_id.clone().map_or_else( || {
-            //generate a random PK for use when nothign is provided (--test-coins)
-            PublicKey::from(SecretKey::random().public_key() )
-        }, |id| *id.public_id().public_key() );
+        let from = client_id.clone().map_or_else(
+            || {
+                //generate a random PK for use when nothign is provided (--test-coins)
+                PublicKey::from(SecretKey::random().public_key())
+            },
+            |id| *id.public_id().public_key(),
+        );
 
         send_as!(
             self,
             Request::CreateBalance {
                 to,
-                from, 
+                from,
                 amount,
-                transaction_id: Some(transaction_id.unwrap_or_else(rand::random) ),
+                transaction_id: Some(transaction_id.unwrap_or_else(rand::random)),
             },
             Response::MoneyReceipt,
             client_id
@@ -340,8 +333,14 @@ pub trait Client: Clone + 'static {
     fn get_balance(&self, client_id: Option<&ClientFullId>) -> Box<CoreFuture<Money>> {
         trace!("Get balance for {:?}", client_id);
         let our_id = self.public_id();
-        let xorname = client_id.map_or_else(|| our_id.name(), |client_id| client_id.public_id().name());
-        send_as_and_get_money!(self, Request::GetBalance(*xorname), Response::GetBalance, client_id )
+        let xorname =
+            client_id.map_or_else(|| our_id.name(), |client_id| client_id.public_id().name());
+        send_as_and_get_money!(
+            self,
+            Request::GetBalance(*xorname),
+            Response::GetBalance,
+            client_id
+        )
     }
 
     /// Put immutable data to the network.
@@ -1131,16 +1130,15 @@ pub trait Client: Clone + 'static {
             |client_id| *client_id.public_id().public_key(),
         );
 
-        trace!(
-            "Set the coin balance of {:?} to {:?}",
-            to,
-            amount,
-        );
+        trace!("Set the coin balance of {:?} to {:?}", to, amount,);
 
-        let from = client_id.clone().map_or_else( || {
-            //generate a random PK for use when nothign is provided (--test-coins)
-            PublicKey::from(SecretKey::random().public_key() )
-        }, |id| *id.public_id().public_key() );
+        let from = client_id.clone().map_or_else(
+            || {
+                //generate a random PK for use when nothign is provided (--test-coins)
+                PublicKey::from(SecretKey::random().public_key())
+            },
+            |id| *id.public_id().public_key(),
+        );
 
         send_as!(
             self,
@@ -1233,7 +1231,6 @@ pub fn wallet_create_balance(
     let transaction_id = transaction_id.unwrap_or_else(rand::random);
     let from = *client_id.public_id().public_key();
 
-
     temp_client(client_id, move |mut cm, full_id| {
         let response = req(
             &mut cm,
@@ -1246,11 +1243,9 @@ pub fn wallet_create_balance(
             &full_id,
         )?;
         match response {
-            Response::MoneyReceipt(res) => {
-                match res {
-                    Ok(response) => Ok(response),
-                    Err(err) => Err(CoreError::from(err) )
-                }
+            Response::MoneyReceipt(res) => match res {
+                Ok(response) => Ok(response),
+                Err(err) => Err(CoreError::from(err)),
             },
             _ => Err(CoreError::from("Unexpected response")),
         }
@@ -1282,11 +1277,9 @@ pub fn wallet_transfer_money(
         )?;
 
         match response {
-            Response::MoneyReceipt(res) => {
-                match res {
-                    Ok(response) => Ok(response),
-                    Err(err) => Err(CoreError::from(err) )
-                }
+            Response::MoneyReceipt(res) => match res {
+                Ok(response) => Ok(response),
+                Err(err) => Err(CoreError::from(err)),
             },
             _ => Err(CoreError::from("Unexpected response")),
         }
@@ -1460,7 +1453,7 @@ mod tests {
     };
     use safe_nd::{
         ADataAction, ADataEntry, ADataKind, ADataOwner, ADataUnpubPermissionSet,
-        ADataUnpubPermissions, AppendOnlyData, Money, Error as SndError, MDataAction, MDataKind,
+        ADataUnpubPermissions, AppendOnlyData, Error as SndError, MDataAction, MDataKind, Money,
         PubImmutableData, PubSeqAppendOnlyData, SeqAppendOnly, UnpubImmutableData,
         UnpubSeqAppendOnlyData, UnpubUnseqAppendOnlyData, UnseqAppendOnly, XorName,
     };
@@ -1949,7 +1942,6 @@ mod tests {
                 .and_then(move |_| {
                     let random_pk = gen_bls_keypair().public_key();
                     let random_source = gen_client_id();
-
 
                     client5
                         .create_balance(

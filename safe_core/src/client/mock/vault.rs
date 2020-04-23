@@ -16,8 +16,8 @@ use fs2::FileExt;
 use log::{debug, trace, warn};
 use safe_nd::{
     verify_signature, AData, ADataAction, ADataAddress, ADataIndex, AppPermissions, AppendOnlyData,
-    Money, Data, Error as SndError, IData, IDataAddress, LoginPacket, MData, MDataAction,
-    MDataAddress, MDataKind, Message, MoneyReceipt, PublicId, PublicKey, Request, RequestType, Response,
+    Data, Error as SndError, IData, IDataAddress, LoginPacket, MData, MDataAction, MDataAddress,
+    MDataKind, Message, Money, MoneyReceipt, PublicId, PublicKey, Request, RequestType, Response,
     Result as SndResult, SeqAppendOnly, TransactionId, UnseqAppendOnly, XorName,
 };
 use serde::{Deserialize, Serialize};
@@ -214,7 +214,7 @@ impl Vault {
     }
 
     /// Instantly creates new balance.
-    pub fn mock_create_balance(&mut self, owner: PublicKey, amount: Money) {        
+    pub fn mock_create_balance(&mut self, owner: PublicKey, amount: Money) {
         let _ = self
             .cache
             .coin_balances
@@ -518,7 +518,7 @@ impl Vault {
             // ===== Money =====
             Request::TransferMoney {
                 to,
-                from, 
+                from,
                 amount,
                 transaction_id,
             } => {
@@ -528,9 +528,7 @@ impl Vault {
                     Err(SndError::InvalidOperation)
                 } else {
                     self.authorise_operations(&[Operation::TransferMoney], source, requester_pk)
-                        .and_then(|()| {
-                            self.transfer_money(source, to, amount, transaction_id)
-                        })
+                        .and_then(|()| self.transfer_money(source, to, amount, transaction_id))
                 };
                 Response::MoneyReceipt(result)
             }
@@ -544,12 +542,13 @@ impl Vault {
                 let recipient = to.into();
 
                 let result = if source == recipient {
-                    let real_or_random_transaction_id : u64 = transaction_id.unwrap_or(rand::random());
-                    // creating a mock balance, source is recipient so we just 
+                    let real_or_random_transaction_id: u64 =
+                        transaction_id.unwrap_or(rand::random());
+                    // creating a mock balance, source is recipient so we just
                     // use that pk
                     self.mock_create_balance(owner_pk, amount);
                     Ok(MoneyReceipt {
-                        id: real_or_random_transaction_id, 
+                        id: real_or_random_transaction_id,
                         amount,
                     })
                 } else {
@@ -570,7 +569,12 @@ impl Vault {
                         })
                         .and_then(|()| {
                             self.commit_mutation(&source);
-                            self.transfer_money(source, recipient, amount, transaction_id.unwrap_or(rand::random()))
+                            self.transfer_money(
+                                source,
+                                recipient,
+                                amount,
+                                transaction_id.unwrap_or(rand::random()),
+                            )
                         })
                 };
                 Response::MoneyReceipt(result)

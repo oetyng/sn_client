@@ -25,7 +25,7 @@ use log::trace;
 use lru_cache::LruCache;
 use rand::rngs::StdRng;
 use rand::{thread_rng, SeedableRng};
-use safe_nd::{ClientFullId, Money, LoginPacket, PublicKey, Request, Response};
+use safe_nd::{ClientFullId, LoginPacket, Money, PublicKey, Request, Response};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -111,13 +111,12 @@ impl CoreClient {
         connection_manager = connection_manager_wrapper_fn(connection_manager);
 
         {
-
             // Create the balance for the client
             let response = req(
                 &mut connection_manager,
                 Request::CreateBalance {
                     to,
-                    from, 
+                    from,
                     amount: unwrap!(Money::from_str("10")),
                     transaction_id: rand::random(),
                 },

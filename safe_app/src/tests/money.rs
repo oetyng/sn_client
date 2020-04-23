@@ -13,7 +13,7 @@ use crate::test_utils::{create_app, create_app_by_req, create_random_auth_req};
 use crate::{run, AppError};
 use futures::Future;
 use safe_core::{Client, CoreError};
-use safe_nd::{AppPermissions, Money, Error, XorName};
+use safe_nd::{AppPermissions, Error, Money, XorName};
 use std::str::FromStr;
 use unwrap::unwrap;
 

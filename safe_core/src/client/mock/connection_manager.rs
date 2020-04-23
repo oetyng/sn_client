@@ -17,7 +17,7 @@ use crate::{err, ok};
 use lazy_static::lazy_static;
 use log::trace;
 use quic_p2p::{self, Config as QuicP2pConfig};
-use safe_nd::{Money, Message, PublicId, PublicKey, Request, RequestType, Response, XorName};
+use safe_nd::{Message, Money, PublicId, PublicKey, Request, RequestType, Response, XorName};
 use std::collections::HashSet;
 use std::env;
 use std::sync::{Arc, Mutex};

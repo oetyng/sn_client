@@ -22,7 +22,7 @@ use futures::sync::mpsc;
 use futures::{Future, IntoFuture};
 use log::trace;
 use rand;
-use safe_nd::{AppFullId, ClientFullId, ClientPublicId, Money, Keypair};
+use safe_nd::{AppFullId, ClientFullId, ClientPublicId, Keypair, Money};
 use std::fmt::Debug;
 use std::sync::mpsc as std_mpsc;
 use tokio::runtime::current_thread::{Handle, Runtime};
