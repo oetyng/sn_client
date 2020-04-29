@@ -353,13 +353,38 @@ impl Vault {
         Ok(())
     }
 
-    fn transfer_money(
+    fn deposit_money(
         &mut self,
         source: XorName,
         to: XorName,
         amount: Money,
         transaction_id: u64,
     ) -> SndResult<MoneyReceipt> {
+        let unlimited = unlimited_money(&self.config);
+        // match self.get_coin_balance_mut(&source) {
+        //     Some(balance) => {
+        //         if !unlimited {
+        //             balance.debit_balance(amount)?
+        //         }
+        //     }
+        //     None => return Err(SndError::NoSuchBalance),
+        // };
+        match self.get_coin_balance_mut(&to) {
+            Some(balance) => balance.credit_balance(amount, transaction_id)?,
+            None => return Err(SndError::NoSuchBalance),
+        };
+        Ok(MoneyReceipt {
+            id: transaction_id,
+            amount,
+        })
+    }
+    fn withdraw_money(
+        &mut self,
+        source: XorName,
+        to: XorName,
+        amount: Money,
+        transaction_id: u64,
+    ) -> SndResult<()> {
         let unlimited = unlimited_money(&self.config);
         match self.get_coin_balance_mut(&source) {
             Some(balance) => {
@@ -369,14 +394,12 @@ impl Vault {
             }
             None => return Err(SndError::NoSuchBalance),
         };
-        match self.get_coin_balance_mut(&to) {
-            Some(balance) => balance.credit_balance(amount, transaction_id)?,
-            None => return Err(SndError::NoSuchBalance),
-        };
-        Ok(MoneyReceipt {
-            id: transaction_id,
-            amount,
-        })
+
+        // match self.get_coin_balance_mut(&to) {
+        //     Some(balance) => balance.credit_balance(amount, transaction_id)?,
+        //     None => return Err(SndError::NoSuchBalance),
+        // };
+        Ok(())
     }
 
     #[allow(clippy::cognitive_complexity)]
@@ -516,6 +539,24 @@ impl Vault {
                 Response::Mutation(result)
             }
             // ===== Money =====
+            // Put money in target account. Triggered after Transfer/Create have subtracted from sender
+            Request::DepositMoney {
+                to,
+                from,
+                amount,
+                new_account,
+                transaction_id,
+            } => {
+                let source: XorName = owner_pk.into();
+
+                let result = if amount.as_nano() == 0 {
+                    Err(SndError::InvalidOperation)
+                } else {
+                    self.authorise_operations(&[Operation::TransferMoney], source, requester_pk)
+                        .and_then(|()| self.deposit_money(source, to, amount, transaction_id))
+                };
+                Response::MoneyReceipt(result)
+            }
             Request::TransferMoney {
                 to,
                 from,
@@ -528,9 +569,27 @@ impl Vault {
                     Err(SndError::InvalidOperation)
                 } else {
                     self.authorise_operations(&[Operation::TransferMoney], source, requester_pk)
-                        .and_then(|()| self.transfer_money(source, to, amount, transaction_id))
+                        .and_then(|()| self.withdraw_money(source, to, amount, transaction_id))
+                        .and_then(|()| {
+                            // Trigger deposit step
+                            let deposit_message =  Message::Request {
+                                request: Request::DepositMoney{ from: source, to, amount, transaction_id:  transaction_id, new_account: false },
+                                message_id,
+                                signature: signature.clone()
+                            };
+                            match self.process_request(requester, &deposit_message)? {
+                                Message::Response{
+                                    response ,
+                                    .. 
+                                } => Ok(response), 
+                                   _ => {
+                                    panic!("Unexpected response to deposit Money")
+                                }
+                            }
+                        })
                 };
-                Response::MoneyReceipt(result)
+                // Response::MoneyReceipt(result)
+                result?
             }
             Request::CreateBalance {
                 amount,
@@ -541,13 +600,15 @@ impl Vault {
                 let source = owner_pk.into();
                 let recipient = to.into();
 
+
+                // same source and recipient?
                 let result = if source == recipient {
                     let real_or_random_transaction_id: u64 =
                         transaction_id.unwrap_or(rand::random());
                     // creating a mock balance, source is recipient so we just
                     // use that pk
                     self.mock_create_balance(owner_pk, amount);
-                    Ok(MoneyReceipt {
+                    Ok(MoneyReceipt{
                         id: real_or_random_transaction_id,
                         amount,
                     })
@@ -556,6 +617,8 @@ impl Vault {
                     if amount == unwrap!(Money::from_str("0")) {
                         req_perms.push(Operation::TransferMoney);
                     }
+
+                    let transaction_id = transaction_id.unwrap_or(rand::random());
                     self.authorise_operations(req_perms.as_slice(), source, requester_pk)
                         .and_then(|_| self.get_balance(&source))
                         .and_then(|source_balance| {
@@ -565,19 +628,46 @@ impl Vault {
                             if !self.has_sufficient_balance(source_balance, total_amount) {
                                 return Err(SndError::InsufficientBalance);
                             }
+                            
                             self.create_balance(recipient, to)
                         })
                         .and_then(|()| {
                             self.commit_mutation(&source);
-                            self.transfer_money(
-                                source,
-                                recipient,
-                                amount,
-                                transaction_id.unwrap_or(rand::random()),
-                            )
+                            
+                            // and also withdraw money
+                            self.withdraw_money(source, recipient, amount, transaction_id)
+                           
+                        })
+                        .and_then(|()| {
+                            // Trigger deposit step
+                            let deposit_message =  Message::Request {
+                                request: Request::DepositMoney{ from: source, to: recipient, amount, transaction_id, new_account: false },
+                                message_id,
+                                signature: signature.clone()
+                            };
+                            // self.process_request(requester, &deposit_message)?.request
+                            match self.process_request(requester, &deposit_message)? {
+                                Message::Response{
+                                    response ,
+                                    .. 
+                                } => {
+                                    match response {
+                                        Response::MoneyReceipt(res) => {
+                                            res
+                                        },
+                                        _ => {
+                                            panic!("Unexpected response to DepositMoney")
+                                        }
+                                    }
+                                }, 
+                                   _ => {
+                                    panic!("Unexpected response to DepositMoney")
+                                }
+                            }
                         })
                 };
                 Response::MoneyReceipt(result)
+                // result
             }
             Request::GetBalance(xorname) => {
                 // todo deal with xorname
@@ -588,6 +678,7 @@ impl Vault {
                     .and_then(move |_| self.get_balance(&coin_balance_id));
                 Response::GetBalance(result)
             }
+
             // ===== Account =====
             Request::CreateLoginPacketFor {
                 new_owner,
@@ -624,7 +715,18 @@ impl Vault {
                         .and_then(|_| {
                             // Debit the requester's wallet the cost of `CreateLoginPacketFor`
                             self.commit_mutation(&source);
-                            self.transfer_money(source, new_balance_dest, amount, transaction_id)
+                            // and also withdraw money
+                            self.withdraw_money(source, new_balance_dest, amount, transaction_id)
+                        })
+                        .and_then(|()| {
+                            // Trigger deposit step
+                            let deposit_message =  Message::Request {
+                                request: Request::DepositMoney{ from: source, to: new_balance_dest, amount, transaction_id, new_account: false },
+                                message_id,
+                                signature: signature.clone()
+                            };
+                            self.process_request(requester, &deposit_message)
+                            
                         })
                         .and_then(|_| {
                             if self
