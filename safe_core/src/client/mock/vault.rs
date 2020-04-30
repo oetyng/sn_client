@@ -18,7 +18,7 @@ use safe_nd::{
     verify_signature, AData, ADataAction, ADataAddress, ADataIndex, AppPermissions, AppendOnlyData,
     Data, Error as SndError, IData, IDataAddress, LoginPacket, MData, MDataAction, MDataAddress,
     MDataKind, Message, Money, MoneyReceipt, PublicId, PublicKey, Request, RequestType, Response,
-    Result as SndResult, SeqAppendOnly, TransactionId, UnseqAppendOnly, XorName,
+    Result as SndResult, SeqAppendOnly, UnseqAppendOnly, XorName,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -263,13 +263,15 @@ impl Vault {
         let balance = self.get_balance(&owner)?;
         // Checks if the requester is the owner
         if owner == requester {
+            let total_cost = Money::as_nano(0);
+            // There must be sufficient balance for the total cost of all mutation operations.
             for operation in operations {
-                // Mutation operations must be checked for min COST_OF_PUT balance
                 if let Operation::Mutation = operation {
-                    if !self.has_sufficient_balance(balance, COST_OF_PUT) {
-                        return Err(SndError::InsufficientBalance);
-                    }
+                    total_cost = total_cost.checked_add(COST_OF_PUT)?;
                 }
+            }
+            if !self.has_sufficient_balance(balance, total_cost) {
+                return Err(SndError::InsufficientBalance);
             }
             return Ok(());
         }
