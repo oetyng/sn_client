@@ -128,7 +128,7 @@ impl CoreClient {
             .await?;
 
             match response {
-                Response::Mutation(res) => res?,
+                Response::Write(res) => res?,
                 _ => return Err(CoreError::from("Unexpected response")),
             };
 

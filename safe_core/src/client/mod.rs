@@ -75,7 +75,7 @@ pub fn bootstrap_config() -> Result<BootstrapConfig, CoreError> {
 
 async fn send(client: &impl Client, request: Request) -> Result<Response, CoreError> {
     // `sign` should be false for GETs on published data, true otherwise.
-    let sign = request.get_type() != RequestType::PublicGet;
+    let sign = request.get_type() != RequestType::PublicRead;
     let request = client.compose_message(request, sign).await?;
     let inner = client.inner();
     let cm = &mut inner.lock().await.connection_manager;
@@ -83,10 +83,10 @@ async fn send(client: &impl Client, request: Request) -> Result<Response, CoreEr
 }
 
 // Sends a mutation request to a new routing.
-async fn send_mutation(client: &impl Client, req: Request) -> Result<(), CoreError> {
+async fn send_write(client: &impl Client, req: Request) -> Result<(), CoreError> {
     let response = send(client, req).await?;
     match response {
-        Response::Mutation(result) => {
+        Response::Write(result) => {
             trace!("mutation result: {:?}", result);
             result.map_err(CoreError::from)
         }
@@ -216,7 +216,7 @@ pub trait Client: Clone + Send + Sync {
         Self: Sized,
     {
         trace!("Put Unsequenced MData at {:?}", data.name());
-        send_mutation(self, Request::MData(MDataRequest::Put(MData::Unseq(data)))).await
+        send_write(self, Request::MData(MDataRequest::Put(MData::Unseq(data)))).await
     }
 
     /// Transfer coin balance
@@ -364,7 +364,7 @@ pub trait Client: Clone + Send + Sync {
     {
         let idata: IData = data.into();
         trace!("Put IData at {:?}", idata.name());
-        send_mutation(self, Request::IData(IDataRequest::Put(idata))).await
+        send_write(self, Request::IData(IDataRequest::Put(idata))).await
     }
 
     /// Get immutable data from the network. If the data exists locally in the cache then it will be
@@ -420,7 +420,7 @@ pub trait Client: Clone + Send + Sync {
 
         let _ = Arc::downgrade(&inner);
         trace!("Delete Unpublished IData at {:?}", name);
-        send_mutation(
+        send_write(
             self,
             Request::IData(IDataRequest::DeleteUnpub(IDataAddress::Unpub(name))),
         )
@@ -433,7 +433,7 @@ pub trait Client: Clone + Send + Sync {
         Self: Sized,
     {
         trace!("Put Sequenced MData at {:?}", data.name());
-        send_mutation(self, Request::MData(MDataRequest::Put(MData::Seq(data)))).await
+        send_write(self, Request::MData(MDataRequest::Put(MData::Seq(data)))).await
     }
 
     /// Fetch unpublished mutable data from the network
@@ -552,7 +552,7 @@ pub trait Client: Clone + Send + Sync {
     {
         trace!("Mutate MData for {:?}", name);
 
-        send_mutation(
+        send_write(
             self,
             Request::MData(MDataRequest::MutateEntries {
                 address: MDataAddress::Seq { name, tag },
@@ -574,7 +574,7 @@ pub trait Client: Clone + Send + Sync {
     {
         trace!("Mutate MData for {:?}", name);
 
-        send_mutation(
+        send_write(
             self,
             Request::MData(MDataRequest::MutateEntries {
                 address: MDataAddress::Unseq { name, tag },
@@ -813,7 +813,7 @@ pub trait Client: Clone + Send + Sync {
         let address = *data.address();
         let _ = data.set_priv_permissions(permissions)?;
         let _ = data.set_owner(owner);
-        send_mutation(self, Request::SData(SDataRequest::Store(data.clone()))).await?;
+        send_write(self, Request::SData(SDataRequest::Store(data.clone()))).await?;
         // Store in local Sequence CRDT replica
         let _ = self
             .inner()
@@ -838,7 +838,7 @@ pub trait Client: Clone + Send + Sync {
         let address = *data.address();
         let _ = data.set_pub_permissions(permissions)?;
         let _ = data.set_owner(owner);
-        send_mutation(self, Request::SData(SDataRequest::Store(data.clone()))).await?;
+        send_write(self, Request::SData(SDataRequest::Store(data.clone()))).await?;
         // Store in local Sequence CRDT replica
         let _ = self
             .inner()
@@ -942,7 +942,7 @@ pub trait Client: Clone + Send + Sync {
             .put(*sdata.address(), sdata.clone());
 
         // Finally we can send the mutation to the network's replicas
-        send_mutation(self, Request::SData(SDataRequest::Mutate(append_op))).await
+        send_write(self, Request::SData(SDataRequest::Edit(append_op))).await
     }
 
     /// Get the set of Permissions of a Public Sequence.
@@ -1033,9 +1033,9 @@ pub trait Client: Clone + Send + Sync {
             .put(*sdata.address(), sdata.clone());
 
         // Finally we can send the mutation to the network's replicas
-        send_mutation(
+        send_write(
             self,
-            Request::SData(SDataRequest::MutatePubPermissions(perms_op)),
+            Request::SData(SDataRequest::SetPubPermissions(perms_op)),
         )
         .await
     }
@@ -1070,9 +1070,9 @@ pub trait Client: Clone + Send + Sync {
             .put(*sdata.address(), sdata.clone());
 
         // Finally we can send the mutation to the network's replicas
-        send_mutation(
+        send_write(
             self,
-            Request::SData(SDataRequest::MutatePrivPermissions(perms_op)),
+            Request::SData(SDataRequest::SetPrivPermissions(perms_op)),
         )
         .await
     }
@@ -1119,14 +1119,14 @@ pub trait Client: Clone + Send + Sync {
             .put(*sdata.address(), sdata.clone());
 
         // Finally we can send the mutation to the network's replicas
-        send_mutation(self, Request::SData(SDataRequest::MutateOwner(owner_op))).await
+        send_write(self, Request::SData(SDataRequest::SetOwner(owner_op))).await
     }
 
     /// Delete Private Sequence Data from the Network
     async fn delete_sdata(&self, address: SDataAddress) -> Result<(), CoreError> {
         trace!("Delete Private Sequence Data {:?}", address.name());
 
-        send_mutation(self, Request::SData(SDataRequest::Delete(address))).await?;
+        send_write(self, Request::SData(SDataRequest::Delete(address))).await?;
 
         // Delete it from local Sequence CRDT replica
         let _ = self.inner().lock().await.sdata_cache.pop(&address);
@@ -1165,7 +1165,7 @@ pub trait Client: Clone + Send + Sync {
     {
         trace!("SetMDataUserPermissions for {:?}", address);
 
-        send_mutation(
+        send_write(
             self,
             Request::MData(MDataRequest::SetUserPermissions {
                 address,
@@ -1189,7 +1189,7 @@ pub trait Client: Clone + Send + Sync {
     {
         trace!("DelMDataUserPermissions for {:?}", address);
 
-        send_mutation(
+        send_write(
             self,
             Request::MData(MDataRequest::DelUserPermissions {
                 address,
@@ -1457,7 +1457,7 @@ pub trait AuthActions: Client + Clone + 'static {
     {
         trace!("InsAuthKey ({:?})", key);
 
-        send_mutation(
+        send_write(
             self,
             Request::Client(ClientRequest::InsAuthKey {
                 key,
@@ -1475,7 +1475,7 @@ pub trait AuthActions: Client + Clone + 'static {
     {
         trace!("DelAuthKey ({:?})", key);
 
-        send_mutation(
+        send_write(
             self,
             Request::Client(ClientRequest::DelAuthKey { key, version }),
         )
@@ -1489,7 +1489,7 @@ pub trait AuthActions: Client + Clone + 'static {
     {
         trace!("Delete entire Mutable Data at {:?}", address);
 
-        send_mutation(self, Request::MData(MDataRequest::Delete(address))).await
+        send_write(self, Request::MData(MDataRequest::Delete(address))).await
     }
 }
 

@@ -88,7 +88,7 @@ impl ConnectionManager {
             let writing = match msg {
                 Message::Request { request, .. } => {
                     let req_type = request.get_type();
-                    req_type == RequestType::Mutation || req_type == RequestType::Transaction
+                    req_type == RequestType::Write || req_type == RequestType::Transfer
                 }
                 _ => false,
             };

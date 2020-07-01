@@ -53,11 +53,11 @@ impl Vault {
                         requester,
                     )
                 };
-                Response::Mutation(result)
+                Response::Write(result)
             }
             IDataRequest::DeleteUnpub(address) => {
                 let result = self.delete_idata(*address, requester_pk);
-                Response::Mutation(result)
+                Response::Write(result)
             }
         }
     }
