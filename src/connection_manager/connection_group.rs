@@ -159,7 +159,7 @@ impl Bootstrapping {
 
     fn handle_bootstrapped_to(&mut self, quic_p2p: &mut QuicP2p, socket: SocketAddr) {
         let token = rand::thread_rng().gen();
-        let handshake = HandshakeRequest::Bootstrap(self.full_id.public_id());
+        let handshake = HandshakeRequest::Bootstrap(self.full_id.public_id().public_key());
         let msg = Bytes::from(unwrap!(serialize(&handshake)));
         quic_p2p.send(Peer::Node(socket), msg, token);
     }
@@ -240,7 +240,6 @@ impl Joining {
         &mut self,
         quic_p2p: &mut QuicP2p,
         sender_addr: SocketAddr,
-        _sender_id: NodePublicId,
         challenge: Vec<u8>,
     ) {
         trace!("Handling challenge");
@@ -272,7 +271,7 @@ impl Joining {
                 },
             );
             let token = rand::thread_rng().gen();
-            let handshake = HandshakeRequest::Join(self.full_id.public_id());
+            let handshake = HandshakeRequest::Join(self.full_id.public_id().public_key());
             let msg = Bytes::from(unwrap!(serialize(&handshake)));
             quic_p2p.send(peer, msg, token);
         } else {
@@ -295,9 +294,9 @@ impl Joining {
         msg: Bytes,
     ) -> Transition {
         match deserialize(&msg) {
-            Ok(HandshakeResponse::Challenge(PublicId::Node(node_public_id), challenge)) => {
+            Ok(HandshakeResponse::Challenge(_, challenge)) => {
                 trace!("Got the challenge from {:?}", peer_addr);
-                self.handle_challenge(quic_p2p, peer_addr, node_public_id, challenge);
+                self.handle_challenge(quic_p2p, peer_addr, challenge);
 
                 if self.is_everyone_joined() {
                     return Transition::ToConnected;
