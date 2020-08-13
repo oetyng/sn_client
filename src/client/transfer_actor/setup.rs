@@ -62,7 +62,7 @@ impl TransferActor {
             validator,
         )));
 
-        let actor = Self {
+        let mut actor = Self {
             safe_key: safe_key.clone(),
             transfer_actor,
             connection_manager,
