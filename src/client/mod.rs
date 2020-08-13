@@ -1465,8 +1465,9 @@ pub async fn attempt_bootstrap(
     }
 }
 
-#[cfg(test)]
-mod tests {
+#[allow(missing_docs)]
+#[cfg(any(test, feature = "testing"))]
+pub mod tests {
     use super::*;
     use crate::utils::{
         generate_random_vector,
@@ -1480,9 +1481,7 @@ mod tests {
     use unwrap::unwrap;
     use xor_name::XorName;
 
-    // Test putting and getting pub blob.
-    #[tokio::test]
-    async fn pub_blob_test() -> Result<(), CoreError> {
+    pub async fn pub_blob_test() -> Result<(), CoreError> {
         let client = random_client()?;
         // The `random_client()` initializes the client with 10 money.
         let start_bal = unwrap!(Money::from_str("10"));
@@ -1520,9 +1519,14 @@ mod tests {
         Ok(())
     }
 
-    // Test putting, getting, and deleting unpub blob.
+    // Test putting and getting pub blob.
     #[tokio::test]
-    async fn unpub_blob_test() -> Result<(), CoreError> {
+    pub async fn pub_blob_test() {
+        assert!(pub_blob_test().await.is_ok());
+    }
+
+    // Test putting, getting, and deleting unpub blob.
+    pub async fn unpub_blob_test() -> Result<(), CoreError> {
         println!("blob_Test________");
         crate::utils::test_utils::init_log();
         // The `random_client()` initializes the client with 10 money.
@@ -1588,10 +1592,15 @@ mod tests {
         Ok(())
     }
 
+    // Test putting, getting, and deleting unpub blob.
+    #[tokio::test]
+    async fn unpub_blob_test() {
+        assert!(unpub_blob_test().await.is_ok());
+    }
+
     // 1. Create unseq. map with some entries and perms and put it on the network
     // 2. Fetch the shell version, entries, keys, values anv verify them
     // 3. Fetch the entire. data object and verify
-    #[tokio::test]
     pub async fn unseq_map_test() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -1633,10 +1642,14 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    pub async fn unseq_map_test() {
+        assert!(unseq_map_test().await.is_ok())
+    }
+
     // 1. Create an put seq. map on the network with some entries and permissions.
     // 2. Fetch the shell version, entries, keys, values anv verify them
     // 3. Fetch the entire. data object and verify
-    #[tokio::test]
     pub async fn seq_map_test() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -1683,9 +1696,13 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    pub async fn seq_map_test() {
+        assert!(seq_map_test().await.is_ok());
+    }
+
     // 1. Put seq. map on the network and then delete it
     // 2. Try getting the data object. It should panic
-    #[tokio::test]
     pub async fn del_seq_map_test() -> Result<(), CoreError> {
         let client = random_client()?;
         let name = XorName(rand::random());
@@ -1709,9 +1726,13 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    pub async fn del_seq_map_test() {
+        assert!(del_seq_map_test().await.is_ok());
+    }
+
     // 1. Put unseq. map on the network and then delete it
     // 2. Try getting the data object. It should panic
-    #[tokio::test]
     pub async fn del_unseq_map_test() -> Result<(), CoreError> {
         let client = random_client()?;
         let name = XorName(rand::random());
@@ -1737,6 +1758,11 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    pub async fn del_unseq_map_test() {
+        assert!(del_unseq_map_test().await.is_ok());
+    }
+
     // TODO: Wallet only client doesn't currently exist.
     // 1. Create 2 accounts and create a wallet only for account A.
     // 2. Try to transfer money from A to inexistent wallet. This request should fail.
@@ -1744,9 +1770,7 @@ mod tests {
     // 4. Now create a wallet for account B and transfer some money to A. This should pass.
     // 5. Try to request transfer from wallet A using account B. This request should succeed
     // (because transfers are always open).
-    #[tokio::test]
-    #[ignore]
-    async fn money_permissions() {
+    pub async fn money_permissions() {
         let client = random_client().unwrap();
         let wallet_a_addr = client.public_key().await;
         let random_client_key = *ClientFullId::new_bls(&mut rand::thread_rng())
@@ -1786,13 +1810,18 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    #[ignore]
+    async fn money_permissions() {
+        money_permissions().await;
+    }
+
     // TODO: Update when login packet is decided to sort out "anonymous" wallets (and eg key clients)
     // 1. Create a client with a wallet. Create an anonymous wallet preloading it from the client's wallet.
     // 2. Transfer some safecoin from the anonymous wallet to the client.
     // 3. Fetch the balances of both the wallets and verify them.
     // 5. Try to create a balance using an inexistent wallet. This should fail.
-    #[tokio::test]
-    async fn random_clients() {
+    pub async fn random_clients() {
         let client = random_client().unwrap();
         // starter amount after creating login packet
         let wallet1 = client.public_key().await;
@@ -1857,6 +1886,11 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn random_clients() {
+        random_clients().await;
+    }
+
     // 1. Create a client A with a wallet and allocate some test safecoin to it.
     // 2. Get the balance and verify it.
     // 3. Create another client B with a wallet holding some safecoin.
@@ -1865,8 +1899,7 @@ mod tests {
     // 6. Try to do a coin transfer without enough funds, it should return `InsufficientBalance`
     // 7. Try to do a coin transfer with the amount set to 0, it should return `InvalidOperation`
     // 8. Set the client's balance to zero and try to put data. It should fail.
-    #[tokio::test]
-    async fn money_balance_transfer() {
+    pub async fn money_balance_transfer() {
         let client = random_client().unwrap();
 
         // let wallet1: XorName =
@@ -1926,9 +1959,13 @@ mod tests {
         };
     }
 
+    #[tokio::test]
+    async fn money_balance_transfer() {
+        money_balance_transfer().await;
+    }
+
     // 1. Create a client that PUTs some map on the network
     // 2. Create a different client that tries to delete the data. It should panic.
-    #[tokio::test]
     pub async fn del_unseq_map_permission_test() -> Result<(), CoreError> {
         let name = XorName(rand::random());
         let tag = 15001;
@@ -1956,6 +1993,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn del_unseq_map_permission_test() {
+        assert!(del_unseq_map_permission_test().await.is_ok());
+    }
+
     pub async fn map_cannot_initially_put_data_with_another_owner_than_current_client(
     ) -> Result<(), CoreError> {
         let client = random_client()?;
@@ -2000,11 +2041,16 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    pub async fn map_cannot_initially_put_data_with_another_owner_than_current_client(
+    ) {
+        assert!(map_cannot_initially_put_data_with_another_owner_than_current_client().await.is_ok());
+    }
+
     // 1. Create a mutable data with some permissions and store it on the network.
     // 2. Modify the permissions of a user in the permission set.
     // 3. Fetch the list of permissions and verify the edit.
     // 4. Delete a user's permissions from the permission set and verify the deletion.
-    #[tokio::test]
     pub async fn map_can_modify_permissions_test() -> Result<(), CoreError> {
         let client = random_client()?;
         let name = XorName(rand::random());
@@ -2058,12 +2104,16 @@ mod tests {
 
         Ok(())
     }
+    
+    #[tokio::test]
+    async fn map_can_modify_permissions_test() {
+        assert!(map_can_modify_permissions_test().await.is_ok());
+    }
 
     // 1. Create a mutable data and store it on the network
     // 2. Create some entry actions and mutate the data on the network.
     // 3. List the entries and verify that the mutation was applied.
     // 4. Fetch a value for a particular key and verify
-    #[tokio::test]
     pub async fn map_mutations_test() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -2206,6 +2256,11 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    pub async fn map_mutations_test() {
+        assert!(map_mutations_test().await.is_ok());
+    }
+
     // // 1. Create a random BLS key and create a wallet for it with some test safecoin.
     // // 2. Without a client object, try to get the balance, create new wallets and transfer safecoin.
     // #[tokio::test]
@@ -2237,7 +2292,6 @@ mod tests {
     //     Ok(())
     // }
 
-    #[tokio::test]
     pub async fn blob_deletions_should_cost_put_price() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -2257,6 +2311,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn blob_deletions_should_cost_put_price() {
+        assert!(blob_deletions_should_cost_put_price().await.is_ok());
+    }
+
     pub async fn map_deletions_should_cost_put_price() -> Result<(), CoreError> {
         let name = XorName(rand::random());
         let tag = 10;
@@ -2279,6 +2337,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn map_deletions_should_cost_put_price() {
+        assert!(map_deletions_should_cost_put_price().await.is_ok());
+    }
+
     pub async fn sequence_deletions_should_cost_put_price() -> Result<(), CoreError> {
         let name = XorName(rand::random());
         let tag = 10;
@@ -2300,9 +2362,13 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn sequence_deletions_should_cost_put_price() {
+        assert!(sequence_deletions_should_cost_put_price().await.is_ok());
+    }
+
     /// Sequence data tests ///
 
-    #[tokio::test]
     pub async fn sequence_basics_test() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -2343,6 +2409,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn sequence_basics_test() {
+        assert!(sequence_basics_test().await.is_ok());
+    }
+
     pub async fn sequence_private_permissions_test() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -2421,6 +2491,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn sequence_private_permissions_test() {
+        assert!(sequence_private_permissions_test().await.is_ok());
+    }
+
     pub async fn sequence_pub_permissions_test() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -2510,6 +2584,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn sequence_pub_permissions_test() {
+        assert!(sequence_pub_permissions_test().await.is_ok());
+    }
+
     pub async fn sequence_append_test() -> Result<(), CoreError> {
         let name = XorName(rand::random());
         let tag = 10;
@@ -2548,6 +2626,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn sequence_append_test() {
+        assert!(sequence_append_test().await.is_ok());
+    }
+
     pub async fn sequence_owner_test() -> Result<(), CoreError> {
         let name = XorName(rand::random());
         let tag = 10;
@@ -2581,6 +2663,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn sequence_owner_test() {
+        assert!(sequence_owner_test().await.is_ok());
+    }
+
     pub async fn sequence_can_delete_private_test() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -2616,6 +2702,10 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn sequence_can_delete_private_test() {
+        assert!(sequence_can_delete_private_test().await.is_ok());
+    }
+
     pub async fn sequence_cannot_delete_public_test() -> Result<(), CoreError> {
         let client = random_client()?;
 
@@ -2646,6 +2736,11 @@ mod tests {
             }
             Ok(_data) => Ok(()),
         }
+    }
+
+    #[tokio::test]
+    pub async fn sequence_cannot_delete_public_test() {
+        assert!(sequence_cannot_delete_public_test().await.is_ok());
     }
 }
 
