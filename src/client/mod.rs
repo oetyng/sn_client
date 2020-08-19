@@ -275,7 +275,7 @@ pub async fn attempt_bootstrap(
 }
 
 #[allow(missing_docs)]
-#[cfg(any(test, feature = "simulated-payouts"))]
+#[cfg(any(test, feature = "simulated-payouts", feature = "testing"))]
 pub mod exported_tests {
     use super::*;
     use crate::utils::{generate_random_vector, test_utils::calculate_new_balance};
@@ -291,6 +291,7 @@ pub mod exported_tests {
     // 6. Try to do a coin transfer without enough funds, it should return `InsufficientBalance`
     // 7. Try to do a coin transfer with the amount set to 0, it should return `InvalidOperation`
     // 8. Set the client's balance to zero and try to put data. It should fail.
+    #[cfg(feature = "simulated-payouts")]
     pub async fn money_balance_transfer() -> Result<(), CoreError> {
         let mut client = Client::new(None).await?;
 
@@ -361,6 +362,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[cfg(feature = "simulated-payouts")]
     pub async fn money_balance_transfer() -> Result<(), CoreError> {
         exported_tests::money_balance_transfer().await
     }
