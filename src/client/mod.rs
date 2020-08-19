@@ -249,6 +249,35 @@ impl Client {
     }
 }
 
+/// Create a new mock balance at an arbitrary address.
+// pub async fn test_create_balance(owner: &ClientFullId, amount: Money) -> Result<(), CoreError> {
+//     trace!("Create test balance of {} for {:?}", amount, owner);
+
+//     let full_id = owner.clone();
+
+//     let (net_tx, _net_rx) = mpsc::unbounded();
+
+//     let cm = attempt_bootstrap(&Config::new().quic_p2p, full_id.clone()).await?;
+
+//     // actor starts with 10....
+//     // let mut actor = SafeTransferActor::new(&full_id.clone(), cm).await?;
+
+//     let public_id = full_id.public_id();
+
+//     // TODO: Adjust this test... it's sending to itself?
+
+//     // Create the balance for the client
+//     let _new_balance_owner = public_id.public_key();
+
+//     let public_key = *full_id.public_key();
+
+//     actor
+//         .trigger_simulated_farming_payout(public_key, amount)
+//         .await?;
+
+//     Ok(())
+// }
+
 /// Utility function that bootstraps a client to the network. If there is a failure then it retries.
 /// After a maximum of three attempts if the boostrap process still fails, then an error is returned.
 pub async fn attempt_bootstrap(
@@ -280,7 +309,10 @@ pub async fn attempt_bootstrap(
 mod exported_tests {
     use super::*;
     use crate::utils::{generate_random_vector, test_utils::calculate_new_balance};
-    use safe_nd::{Error as SndError, Money, PublicBlob};
+    use safe_nd::{
+        Data, Error as SndError, MapAddress, MapKind, Money, PrivSeqData, PrivateBlob, PublicBlob,
+        SequenceKind, UnseqMap,
+    };
     use std::str::FromStr;
     use unwrap::unwrap;
 
@@ -355,15 +387,212 @@ mod exported_tests {
 
         Ok(())
     }
+
+    // 1. Create 2 accounts and create a wallet only for account B.
+    // 2. Try to transfer money from A to nonexistent wallet. This request should fail.
+    // 3. Try to request balance of wallet A. This request should fail.
+    // 4. Now transfer some money to B to A. This should pass as the network creates a wallet for A automatically.
+    // 5. Assert that A has received the money sent from B(because transfers are always open).
+    #[tokio::test]
+    pub async fn money_permissions() {
+        let mut client_A = Client::new_no_initial_balance(None).await?;
+        let wallet_a_addr = client.public_key().await;
+        let random_client_key = *ClientFullId::new_bls(&mut rand::thread_rng())
+            .public_id()
+            .public_key();
+        let res = client_B
+            .send_money(random_client_key, unwrap!(Money::from_str("5.0")))
+            .await;
+        match res {
+            Err(CoreError::DataError(SndError::NoSuchBalance)) => (),
+            res => panic!("Unexpected result: {:?}", res),
+        }
+
+        let mut client_B = Client::new(None).await?;
+        client_B
+            .test_simulate_farming_payout_client(unwrap!(Money::from_str("50.0")))
+            .await
+            .unwrap();
+        let _ = client_B
+            .send_money(wallet_a_addr, unwrap!(Money::from_str("10")))
+            .await;
+
+        let res = client_A.get_balance(None).await;
+        let expected_amt = unwrap!(Money::from_str("10"));
+        match res {
+            Ok(fetched_amt) => assert_eq!(expected_amt, fetched_amt),
+            res => panic!("Unexpected result: {:?}", res),
+        }
+    }
+
+    // TODO: Update when login packet is decided to sort out "anonymous" wallets (and eg key clients)
+    // 1. Create a client with a wallet. Create an anonymous wallet preloading it from the client's wallet.
+    // 2. Transfer some safecoin from the anonymous wallet to the client.
+    // 3. Fetch the balances of both the wallets and verify them.
+    // 5. Try to create a balance using an inexistent wallet. This should fail.
+
+    // TODO: evaluate if test still valid
+    // #[tokio::test]
+    // async fn random_clients() -> Result<(),CoreError> {
+    //     let mut client = Client::new(None).await?;
+    //     // starter amount after creating login packet
+    //     let wallet1 = client.public_key().await;
+    //     let init_bal = unwrap!(Money::from_str("490.0")); // 500 in total
+
+    //     let client2 = Client::new(None).await?;
+
+    //     let bls_pk = client2.public_id().await.public_key();
+
+    //     client
+    //         .test_simulate_farming_payout_client(init_bal)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(
+    //         client.get_balance(None).await.unwrap(),
+    //         unwrap!(Money::from_str("499.999999999"))
+    //     ); // 500 - 1nano for encrypted-account-data
+
+    //     let _ = client
+    //         .create_balance(None, bls_pk, unwrap!(Money::from_str("100.0")))
+    //         .await
+    //         .unwrap();
+
+    //     assert_eq!(
+    //         client.get_balance(None).await.unwrap(),
+    //         unwrap!(Money::from_str("399.999999999"))
+    //     );
+    //     assert_eq!(
+    //         client2.get_balance(None).await.unwrap(),
+    //         unwrap!(Money::from_str("109.999999999"))
+    //     );
+
+    //     let _ = client2
+    //         .send_money(wallet1, unwrap!(Money::from_str("5.0")))
+    //         .await
+    //         .unwrap();
+
+    //     let balance = client2.get_balance(None).await.unwrap();
+    //     assert_eq!(balance, unwrap!(Money::from_str("104.999999999")));
+    //     let balance = client.get_balance(None).await.unwrap();
+
+    //     // we add ten when testing to created clients
+    //     let initial_bal_with_default_ten = Money::from_str("500").unwrap();
+    //     let expected = calculate_new_balance(
+    //         initial_bal_with_default_ten,
+    //         Some(1),
+    //         Some(unwrap!(Money::from_str("95"))),
+    //     );
+    //     assert_eq!(balance, expected);
+    //     let random_pk = gen_bls_keypair().public_key();
+
+    //     let nonexistent_client = Client::new(None).await?;
+
+    //     let res = nonexistent_client
+    //         .create_balance(None, random_pk, unwrap!(Money::from_str("100.0")))
+    //         .await;
+    //     match res {
+    //         Err(CoreError::DataError(e)) => {
+    //             assert_eq!(e.to_string(), "Not enough money to complete this operation");
+    //         }
+    //         res => panic!("Unexpected result: {:?}", res),
+    //     }
+
+    //     Ok(())
+    // }
+
+    // 1. Create a random BLS key and create a wallet for it with some test safecoin.
+    // 2. Without a client object, try to get the balance, create new wallets and transfer safecoin.
+    // #[tokio::test]
+    // pub async fn wallet_transactions_without_client() -> Result<(), CoreError> {
+    //     let client_id = gen_client_id();
+    //
+    //     test_create_balance(&client_id, unwrap!(Coins::from_str("50"))).await?;
+    //
+    //     let balance = wallet_get_balance(&client_id).await?;
+    //     let ten_coins = unwrap!(Coins::from_str("10"));
+    //     assert_eq!(balance, unwrap!(Coins::from_str("50")));
+    //
+    //     let new_client_id = gen_client_id();
+    //     let new_client_pk = new_client_id.public_id().public_key();
+    //     let new_wallet: XorName = *new_client_id.public_id().name();
+    //     let txn = wallet_create_balance(&client_id, *new_client_pk, ten_coins, None).await?;
+    //     assert_eq!(txn.amount, ten_coins);
+    //     let txn2 = wallet_transfer_coins(&client_id, new_wallet, ten_coins, None).await?;
+    //     assert_eq!(txn2.amount, ten_coins);
+    //
+    //     let client_balance = wallet_get_balance(&client_id).await?;
+    //     let expected = unwrap!(Coins::from_str("30"));
+    //     let expected = unwrap!(expected.checked_sub(COST_OF_PUT));
+    //     assert_eq!(client_balance, expected);
+    //
+    //     let new_client_balance = wallet_get_balance(&new_client_id).await?;
+    //     assert_eq!(new_client_balance, unwrap!(Coins::from_str("20")));
+    //
+    //     Ok(())
+    // }
+
+    // 1. Store different variants of unpublished data on the network.
+    // 2. Get the balance of the client.
+    // 3. Delete data from the network.
+    // 4. Verify that the balance has not changed since deletions are free.
+    #[tokio::test]
+    pub async fn deletions_should_be_free() -> Result<(), CoreError> {
+        let name = XorName(rand::random());
+        let tag = 10;
+        let mut client = Client::new(None).await?;
+
+        let blob = Blob::Private(PrivateBlob::new(
+            unwrap!(generate_random_vector::<u8>(10)),
+            client.public_key().await,
+        ));
+        let address = *blob.name();
+
+        let mut sdata = Sequence::new_private(client.public_key().await, name, tag);
+        let address = *sdata.address();
+        let _ = sdata.set_private_permissions(permissions)?;
+        let _ = sdata.set_owner(owner);
+
+        let map = UnseqMap::new(name, tag, client.public_key().await);
+
+        // Write all types of unpub data
+        client.store_blob(blob).await?;
+        client.new_sequence(sdata).await?;
+        client.put(map).await?;
+
+        let balance = client.get_balance(None).await?;
+
+        client
+            .delete_adata(SequenceAddress::from_kind(SequenceKind::Private, name, tag))
+            .await?;
+        client
+            .delete_mdata(MapAddress::from_kind(MapKind::Unseq, name, tag))
+            .await?;
+
+        client
+            .get_balance(None)
+            .await
+            .map(move |bal| assert_eq!(bal, balance));
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::exported_tests;
-    use super::*;
+    use crate::CoreError;
+
+    #[tokio::test]
+    pub async fn money_balance_transfer() -> Result<(), CoreError> {
+        exported_tests::money_balance_transfer()
+    }
+
+    #[tokio::test]
+    pub async fn deletions_should_be_free() -> Result<(), CoreError> {
+        exported_tests::deletions_should_be_free()
+    }
 
     #[tokio::test]
     pub async fn money_permissions() -> Result<(), CoreError> {
-        exported_tests::money_balance_transfer()
+        exported_tests::money_permissions()
     }
 }

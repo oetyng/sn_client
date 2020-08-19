@@ -54,7 +54,7 @@ tempfile = "3.1.0"
 
 [features]
 simulated-payouts = ["safe-nd/simulated-payouts", "safe-transfers/simulated-payouts"]
-testing = []
+testing = ["simulated-payouts"]
 
 
 [patch.crates-io]
