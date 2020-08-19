@@ -54,13 +54,10 @@ tempfile = "3.1.0"
 
 [features]
 simulated-payouts = ["safe-nd/simulated-payouts", "safe-transfers/simulated-payouts"]
-testing = ["simulated-payouts"]
+testing = []
 
 
 [patch.crates-io]
-# safe-nd = { path = "../safe-nd"} 
-# safe-nd = { git = "https://github.com/maidsafe/safe-nd.git", branch = "master" }
+safe-nd = { git = "https://github.com/maidsafe/safe-nd.git" }
 safe-transfers = { git = "https://github.com/maidsafe/safe-transfers.git" }
-# safe-transfers = { path="../safe-transfers" }
-# self_encryption = { path="../self_encryption" }
 self_encryption = { git = "https://github.com/joshuef/self_encryption.git", branch = "AllowMutGet" }
