@@ -297,7 +297,6 @@ pub mod exported_tests {
     // Test putting, getting, and deleting unpub blob.
     pub async fn unpub_blob_test() -> Result<(), CoreError> {
         println!("blob_Test________");
-        crate::utils::test_utils::init_log();
         // The `Client::new(None)` initializes the client with 10 money.
         let start_bal = unwrap!(Money::from_str("10"));
         println!("blob_Test_______pre client_");
