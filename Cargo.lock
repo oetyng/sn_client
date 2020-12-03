@@ -1921,9 +1921,8 @@ dependencies = [
 
 [[package]]
 name = "sn_data_types"
-version = "0.11.34"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8373c919a03460cdf229340fed185a10fa063c8ea0c72e19e0d7827e082482f"
+version = "0.11.35"
+source = "git+https://github.com/maidsafe/sn_data_types#2e04d23dc234f162d9eff95f4b499e4a2513f720"
 dependencies = [
  "bincode",
  "crdts",
@@ -1944,8 +1943,7 @@ dependencies = [
 [[package]]
 name = "sn_transfers"
 version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c2c166ffa7cf86a89ad7b5dcdc0360232aa5cdbc60518d4d0e062fb8bb27788"
+source = "git+https://github.com/oetyng/sn_transfers?branch=96f7270-actor-model-changes#c3ac46c8131cd4dba37f9b2bfd977f0448c6f5e6"
 dependencies = [
  "bincode",
  "crdts",
