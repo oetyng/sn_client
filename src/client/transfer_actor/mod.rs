@@ -148,7 +148,7 @@ impl Client {
         trace!("Received history response is: {:?}", history);
 
         let mut actor = self.transfer_actor.lock().await;
-        match actor.synch_events(history) {
+        match actor.from_history(history) {
             Ok(synced_transfer_outcome) => {
                 if let Some(transfers) = synced_transfer_outcome {
                     actor.apply(ActorEvent::TransfersSynched(transfers))?;

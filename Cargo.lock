@@ -1895,7 +1895,7 @@ dependencies = [
 [[package]]
 name = "sn_data_types"
 version = "0.11.37"
-source = "git+https://github.com/oetyng/sn_data_types?branch=refactor-chunk-duplication#6849a2da4789d463d40a957b832593956f7f913c"
+source = "git+https://github.com/oetyng/sn_data_types?branch=section-wallet#b8473c27b4239fdc10cbf73030a60129c29836bb"
 dependencies = [
  "bincode",
  "crdts",
@@ -1916,7 +1916,7 @@ dependencies = [
 [[package]]
 name = "sn_transfers"
 version = "0.2.4"
-source = "git+https://github.com/oetyng/sn_transfers?branch=refactor-chunk-duplication#aba65515765f4e2785131ae117ec01c39f5c8180"
+source = "git+https://github.com/oetyng/sn_transfers?branch=section-wallet#ed0e81a03e94951b4362757ba61569b0380018db"
 dependencies = [
  "bincode",
  "crdts",
