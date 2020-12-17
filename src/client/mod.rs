@@ -133,7 +133,7 @@ impl Client {
         .await?;
 
         // random PK used for from payment
-        let random_payment_id = Keypair::new_bls(&mut rng);
+        let random_payment_id = Keypair::new_ed25519(&mut rng);
         let random_payment_pk = random_payment_id.public_key();
 
         let simulated_farming_payout_dot = Dot::new(random_payment_pk, 0);

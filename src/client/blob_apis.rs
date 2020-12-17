@@ -340,7 +340,7 @@ impl Client {
 #[cfg(any(test, feature = "simulated-payouts"))]
 pub mod exported_tests {
     use super::*;
-    use crate::utils::{generate_random_vector, test_utils::gen_bls_keypair};
+    use crate::utils::{generate_random_vector, test_utils::gen_ed_keypair};
     use sn_data_types::{Error as SndError, Money, PrivateBlob, PublicBlob};
     use std::str::FromStr;
     use unwrap::unwrap;
@@ -354,7 +354,7 @@ pub mod exported_tests {
         let value = generate_random_vector::<u8>(10);
         let data = Blob::Public(PublicBlob::new(value.clone()));
         let address = *data.address();
-        let _pk = gen_bls_keypair().public_key();
+        let _pk = gen_ed_keypair().public_key();
 
         let res = client
             // Get non-existent blob

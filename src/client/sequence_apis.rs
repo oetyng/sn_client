@@ -952,7 +952,7 @@ impl Client {
 #[cfg(any(test, feature = "simulated-payouts", feature = "testing"))]
 pub mod exported_tests {
     use super::*;
-    use crate::utils::test_utils::gen_bls_keypair;
+    use crate::utils::test_utils::gen_ed_keypair;
     use sn_data_types::{Error as SndError, Money, SequenceAction, SequencePrivatePermissions};
     use std::str::FromStr;
     use unwrap::unwrap;
@@ -1106,7 +1106,7 @@ pub mod exported_tests {
             }
         }
 
-        let sim_client = gen_bls_keypair().public_key();
+        let sim_client = gen_ed_keypair().public_key();
         let mut perms2 = BTreeMap::<PublicKey, SequencePrivatePermissions>::new();
         let _ = perms2.insert(
             sim_client,
@@ -1218,7 +1218,7 @@ pub mod exported_tests {
             }
         }
 
-        let sim_client = gen_bls_keypair().public_key();
+        let sim_client = gen_ed_keypair().public_key();
         let mut perms2 = BTreeMap::<SequenceUser, SequencePublicPermissions>::new();
         let _ = perms2.insert(
             SequenceUser::Key(sim_client),
@@ -1392,7 +1392,7 @@ pub mod exported_tests {
         let current_owner = client.get_sequence_owner(address).await?;
         assert_eq!(owner, current_owner);
 
-        let sim_client = gen_bls_keypair().public_key();
+        let sim_client = gen_ed_keypair().public_key();
         client
             .set_private_sequence_owner(address, sim_client)
             .await?;

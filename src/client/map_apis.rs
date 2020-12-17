@@ -654,7 +654,7 @@ impl Client {
 #[cfg(any(test, feature = "simulated-payouts", feature = "testing"))]
 pub mod exported_tests {
     use super::*;
-    use crate::utils::test_utils::gen_bls_keypair;
+    use crate::utils::test_utils::gen_ed_keypair;
     use sn_data_types::{Error as SndError, MapAction, MapKind, Money};
     use std::str::FromStr;
     use xor_name::XorName;
@@ -842,8 +842,8 @@ pub mod exported_tests {
             .allow(MapAction::Insert)
             .allow(MapAction::ManagePermissions);
         let user = client.public_key().await;
-        let random_user = gen_bls_keypair().public_key();
-        let random_pk = gen_bls_keypair().public_key();
+        let random_user = gen_ed_keypair().public_key();
+        let random_pk = gen_ed_keypair().public_key();
 
         let _ = permissions.insert(user, permission_set.clone());
         let _ = permissions.insert(random_user, permission_set);
@@ -883,7 +883,7 @@ pub mod exported_tests {
             .allow(MapAction::Insert)
             .allow(MapAction::ManagePermissions);
         let user = client.public_key().await;
-        let random_user = gen_bls_keypair().public_key();
+        let random_user = gen_ed_keypair().public_key();
 
         let _ = permissions.insert(user, permission_set.clone());
         let _ = permissions.insert(random_user, permission_set);

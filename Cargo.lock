@@ -1895,7 +1895,7 @@ dependencies = [
 [[package]]
 name = "sn_data_types"
 version = "0.11.37"
-source = "git+https://github.com/oetyng/sn_data_types?branch=section-wallet#b8473c27b4239fdc10cbf73030a60129c29836bb"
+source = "git+https://github.com/oetyng/sn_data_types?branch=multi-sig-wallet#ef83d81a2dcfb2fe4b393eef3bdd02be24725f9d"
 dependencies = [
  "bincode",
  "crdts",
@@ -1916,7 +1916,7 @@ dependencies = [
 [[package]]
 name = "sn_transfers"
 version = "0.2.4"
-source = "git+https://github.com/oetyng/sn_transfers?branch=section-wallet#ed0e81a03e94951b4362757ba61569b0380018db"
+source = "git+https://github.com/oetyng/sn_transfers?branch=multi-sig-wallet#1739be73b0e823bb67bd63690d6c3e265ad14fd0"
 dependencies = [
  "bincode",
  "crdts",
