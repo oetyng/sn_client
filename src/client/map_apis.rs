@@ -652,6 +652,7 @@ pub mod exported_tests {
     use sn_messaging::Error as ErrorMessage;
     use std::str::FromStr;
     use std::time::Duration;
+    use tokio::time::delay_for;
     use xor_name::XorName;
 
     // 1. Create unseq. map with some entries and perms and put it on the network
@@ -676,6 +677,7 @@ pub mod exported_tests {
 
         let mut res: Result<u64> = Err(anyhow!("Timeout!".to_string()));
         while res.is_err() {
+            delay_for(Duration::from_millis(500)).await;
             res = match client
                 .get_map_version(MapAddress::Unseq { name, tag })
                 .await
@@ -731,6 +733,7 @@ pub mod exported_tests {
 
         let mut res: Result<MapSeqEntries> = Err(anyhow!("Timeout!".to_string()));
         while res.is_err() {
+            delay_for(Duration::from_millis(500)).await;
             res = match client.list_seq_map_entries(name, tag).await {
                 Ok(res) => Ok(res),
                 Err(error) => Err(error.into()), // into anyhow error
@@ -775,6 +778,7 @@ pub mod exported_tests {
 
         let mut res = client.get_map(address).await;
         while res.is_ok() {
+            delay_for(Duration::from_millis(500)).await;
             // Keep trying until it fails
             res = client.get_map(address).await;
         }
@@ -907,6 +911,7 @@ pub mod exported_tests {
         // Assert that the data is stored.
         let mut res = client.get_map(address).await;
         while res.is_err() {
+            delay_for(Duration::from_millis(500)).await;
             res = client.get_map(address).await;
         }
 
@@ -924,6 +929,7 @@ pub mod exported_tests {
             .list_map_user_permissions(MapAddress::Seq { name, tag }, user)
             .await?;
         while permissions.is_allowed(MapAction::Insert) {
+            delay_for(Duration::from_millis(500)).await;
             permissions = client
                 .list_map_user_permissions(MapAddress::Seq { name, tag }, user)
                 .await?;
@@ -942,6 +948,7 @@ pub mod exported_tests {
             .list_map_permissions(MapAddress::Seq { name, tag })
             .await?;
         while permissions.len() != 1 {
+            delay_for(Duration::from_millis(500)).await;
             permissions = client
                 .list_map_permissions(MapAddress::Seq { name, tag })
                 .await?;
@@ -991,6 +998,7 @@ pub mod exported_tests {
         // Assert that the data is stored.
         let mut res = client.get_map(address).await;
         while res.is_err() {
+            delay_for(Duration::from_millis(500)).await;
             res = client.get_map(address).await;
         }
 
@@ -1072,6 +1080,7 @@ pub mod exported_tests {
         // Assert that the data is stored.
         let mut res = client.get_map(address).await;
         while res.is_err() {
+            delay_for(Duration::from_millis(500)).await;
             res = client.get_map(address).await;
         }
 
