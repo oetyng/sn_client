@@ -19,8 +19,9 @@ use qp2p::{
 };
 use sn_data_types::{HandshakeRequest, Keypair, TransferValidated};
 use sn_messaging::{
-    client::{Event, Message, MessageId, QueryResponse},
+    client::{ClientMessage, Event, QueryResponse},
     infrastructure::{GetSectionResponse, Query},
+    MessageId,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -97,8 +98,8 @@ impl ConnectionManager {
         Ok(())
     }
 
-    /// Send a `Message` to the network without awaiting for a response.
-    pub async fn send_cmd(&mut self, msg: &Message) -> Result<(), Error> {
+    /// Send a `ClientMessage` to the network without awaiting for a response.
+    pub async fn send_cmd(&mut self, msg: &ClientMessage) -> Result<(), Error> {
         let msg_id = msg.id();
 
         let endpoint = self.endpoint.clone().ok_or(Error::NotBootstrapped)?;
@@ -171,7 +172,7 @@ impl ConnectionManager {
     /// Send a transfer validation message to all Elder without awaiting for a response.
     pub async fn send_transfer_validation(
         &self,
-        msg: &Message,
+        msg: &ClientMessage,
         sender: Sender<Result<TransferValidated, Error>>,
     ) -> Result<(), Error> {
         info!(
@@ -219,7 +220,7 @@ impl ConnectionManager {
     }
 
     /// Send a Query `Message` to the network awaiting for the response.
-    pub async fn send_query(&mut self, msg: &Message) -> Result<QueryResponse, Error> {
+    pub async fn send_query(&mut self, msg: &ClientMessage) -> Result<QueryResponse, Error> {
         info!("sending query message {:?} w/ id: {:?}", msg, msg.id());
         let msg_bytes = msg.serialize()?;
 
@@ -620,14 +621,14 @@ impl ConnectionManager {
                 warn!("Message received in qp2p listener");
                 match message {
                     Qp2pMessage::BiStream { bytes, .. } | Qp2pMessage::UniStream { bytes, .. } => {
-                        match Message::from(bytes) {
+                        match ClientMessage::from(bytes) {
                             Ok(message) => {
                                 warn!(
                                     "Message received at listener for {:?}: {:?}",
                                     &elder_addr, &message
                                 );
                                 match message.clone() {
-                                    Message::QueryResponse {
+                                    ClientMessage::QueryResponse {
                                         response,
                                         correlation_id,
                                         ..
@@ -645,7 +646,7 @@ impl ConnectionManager {
                                             error!("No matching pending query found for elder {:?}  and message {:?}", elder_addr, correlation_id);
                                         }
                                     }
-                                    Message::Event {
+                                    ClientMessage::Event {
                                         event,
                                         correlation_id,
                                         ..
@@ -665,7 +666,7 @@ impl ConnectionManager {
                                             }
                                         }
                                     }
-                                    Message::CmdError {
+                                    ClientMessage::CmdError {
                                         error,
                                         correlation_id,
                                         ..

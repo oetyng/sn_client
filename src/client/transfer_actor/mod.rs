@@ -5,7 +5,7 @@ use sn_data_types::{
     DebitId, Keypair, PublicKey, SignedTransfer, Token, TransferAgreementProof, TransferValidated,
 };
 use sn_messaging::client::{
-    Cmd, DataCmd, Message, Query, QueryResponse, TransferCmd, TransferQuery,
+    ClientMessage, Cmd, DataCmd, Query, QueryResponse, TransferCmd, TransferQuery,
 };
 use sn_transfers::{ActorEvent, ReplicaValidator, TransferInitiated};
 use threshold_crypto::PublicKeySet;
@@ -268,7 +268,7 @@ impl Client {
     /// Send message and await validation and constructing of TransferAgreementProof
     async fn await_validation(
         &self,
-        message: &Message,
+        message: &ClientMessage,
         _id: DebitId,
     ) -> Result<TransferAgreementProof, Error> {
         info!("Awaiting transfer validation");

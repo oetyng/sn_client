@@ -42,7 +42,10 @@ use rand::rngs::OsRng;
 use std::str::FromStr;
 
 use sn_data_types::{Keypair, PublicKey, Token};
-use sn_messaging::client::{Cmd, DataCmd, Message, MessageId, Query, QueryResponse};
+use sn_messaging::{
+    client::{ClientMessage, Cmd, DataCmd, Query, QueryResponse},
+    MessageId,
+};
 
 use std::{collections::HashSet, net::SocketAddr, sync::Arc};
 use threshold_crypto::PublicKeySet;
@@ -235,24 +238,24 @@ impl Client {
     }
 
     // Build and sign Cmd Message Envelope
-    pub(crate) fn create_cmd_message(msg_contents: Cmd) -> Message {
+    pub(crate) fn create_cmd_message(msg_contents: Cmd) -> ClientMessage {
         let random_xor = XorName::random();
         let id = MessageId(random_xor);
         trace!("Creating cmd message with id: {:?}", id);
 
-        Message::Cmd {
+        ClientMessage::Cmd {
             cmd: msg_contents,
             id,
         }
     }
 
     // Build and sign Query Message Envelope
-    pub(crate) fn create_query_message(msg_contents: Query) -> Message {
+    pub(crate) fn create_query_message(msg_contents: Query) -> ClientMessage {
         let random_xor = XorName::random();
         let id = MessageId(random_xor);
         trace!("Creating query message with id : {:?}", id);
 
-        Message::Query {
+        ClientMessage::Query {
             query: msg_contents,
             id,
         }
