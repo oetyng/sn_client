@@ -23,7 +23,8 @@ dirs-next = "1.0.1"
 futures = "~0.3.5"
 futures-util = "~0.3.4"
 log = "~0.4.8"
-qp2p = "~0.9.18"
+# qp2p = {path="../qp2p"}
+qp2p = { git = "https://github.com/joshuef/qp2p", branch = "FixLoopbackIp" }
 rand = "~0.7.3"
 regex = "1.3.1"
 rmp-serde = "~0.15.1"
