@@ -12,9 +12,9 @@ use bincode::serialize;
 use futures::future::{join_all, select_all};
 use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use sn_data_types::{Blob, PrivateBlob, PublicBlob, TransferValidated};
+use sn_data_types::{Chunk, PrivateChunk, PublicChunk, TransferValidated};
 use sn_messaging::{
-    client::{BlobRead, DataQuery, Message, Query, QueryResponse},
+    client::{ChunkRead, DataQuery, Message, Query, QueryResponse},
     section_info::Message as SectionInfoMsg,
     MessageId,
 };
@@ -239,7 +239,7 @@ impl Session {
         let _ = pending_queries.lock().await.insert(msg_id, sender);
 
         let chunk_addr = if let Message::Query {
-            query: Query::Data(DataQuery::Blob(BlobRead::Get(address))),
+            query: Query::Data(DataQuery::Chunk(ChunkRead::Get(address))),
             ..
         } = &msg
         {
@@ -308,28 +308,28 @@ impl Session {
 
         let response = loop {
             match (receiver.recv().await, chunk_addr) {
-                (Some(Ok(QueryResponse::GetBlob(Ok(blob)))), Some(chunk_addr)) => {
-                    // We are dealing with Chunk query responses, thus we validate its hash
+                (Some(Ok(QueryResponse::GetChunk(Ok(chunk)))), Some(chunk_addr)) => {
+                    // We are dealing with chunk query responses, thus we validate its hash
                     // matches its xorname, if so, we don't need to await for more responses
-                    debug!("Chunk QueryResponse received is: {:#?}", blob);
+                    debug!("Chunk QueryResponse received is: {:#?}", chunk);
 
-                    let xorname = match &blob {
-                        Blob::Private(priv_chunk) => {
-                            *PrivateBlob::new(priv_chunk.value().clone(), *priv_chunk.owner())
+                    let xorname = match &chunk {
+                        Chunk::Private(priv_chunk) => {
+                            *PrivateChunk::new(priv_chunk.value().clone(), *priv_chunk.owner())
                                 .name()
                         }
-                        Blob::Public(pub_chunk) => {
-                            *PublicBlob::new(pub_chunk.value().clone()).name()
+                        Chunk::Public(pub_chunk) => {
+                            *PublicChunk::new(pub_chunk.value().clone()).name()
                         }
                     };
 
                     if *chunk_addr.name() == xorname {
-                        trace!("Valid Chunk received for {}", msg_id);
-                        break Some(QueryResponse::GetBlob(Ok(blob)));
+                        trace!("Valid chunk received for {}", msg_id);
+                        break Some(QueryResponse::GetChunk(Ok(chunk)));
                     } else {
-                        // the Chunk content doesn't match its Xorname,
+                        // the chunk content doesn't match its Xorname,
                         // this is suspicious and it could be a byzantine node
-                        warn!("We received an invalid Chunk response from one of the nodes");
+                        warn!("We received an invalid chunk response from one of the nodes");
                         responses_discarded += 1;
                     }
                 }
